@@ -89,7 +89,7 @@ Planned phases:
 ## 6. Open questions for the user
 
 - ~~Where should the code live?~~ Decided 2026-10-29: in this repo.
-- ~~Run CCAM once as a visual reference?~~ Decided 2026-10-29: yes.
+- ~~Run CCAM once?~~ Not wanted (2026-10-29). CCAM is a code reference only. Its full source is cloned in `vendor/ccam/` (git-ignored, commit 3cb22ae, read only, never run). Don't run it natively: on every start it writes its hooks into the global `~/.claude/settings.json`, and it needs Node 22.22+ while this machine has 22.18.
 - Should this repo get a private GitHub remote?
 - Cost figures: are approximate prices per model enough? (The official docs say telemetry cost is an approximation.)
 
