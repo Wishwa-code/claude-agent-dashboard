@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Start, stop or open the agent dashboard (monitor/server.js) on http://localhost:4020.
+#
+#   bin/dashboard            start it if it isn't running, then open it in the browser
+#   bin/dashboard status     say whether it is running
+#   bin/dashboard stop       stop it
+#   bin/dashboard restart    stop, then start and open
+#
+# It runs detached, so it keeps going after the Claude session that started it ends. Log: ~/.local/state/claude-dashboard/monitor.log
+set -euo pipefail
+DIR="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+PORT="${PORT:-4020}"
+URL="http://localhost:$PORT"
+LOGDIR="$HOME/.local/state/claude-dashboard"
+
+pid_on_port() { ss -ltnpH "sport = :$PORT" 2>/dev/null | grep -o 'pid=[0-9]*' | head -1 | cut -d= -f2; }
+
+start() {
+  if [ -n "$(pid_on_port)" ]; then echo "Dashboard already running: $URL"; return; fi
+  mkdir -p "$LOGDIR"
+  PORT="$PORT" setsid nohup node "$DIR/monitor/server.js" >>"$LOGDIR/monitor.log" 2>&1 < /dev/null &
+  for _ in $(seq 20); do [ -n "$(pid_on_port)" ] && break; sleep 0.2; done
+  if [ -z "$(pid_on_port)" ]; then echo "Dashboard did not start; see $LOGDIR/monitor.log" >&2; exit 1; fi
+  echo "Dashboard started: $URL"
+}
+
+stop() {
+  local pid; pid="$(pid_on_port)"
+  if [ -z "$pid" ]; then echo "Dashboard not running"; return; fi
+  kill "$pid" && echo "Dashboard stopped (pid $pid)"
+}
+
+case "${1:-open}" in
+  open) start; xdg-open "$URL" >/dev/null 2>&1 || true ;;
+  start) start ;;
+  stop) stop ;;
+  restart) stop; sleep 0.5; start; xdg-open "$URL" >/dev/null 2>&1 || true ;;
+  status) if pid="$(pid_on_port)" && [ -n "$pid" ]; then echo "Running: $URL (pid $pid)"; else echo "Not running"; fi ;;
+  *) echo "usage: dashboard [open|start|stop|restart|status]" >&2; exit 2 ;;
+esac
