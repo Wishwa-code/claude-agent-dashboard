@@ -249,6 +249,30 @@
   .howto { font-size: 13px; color: var(--ink-2); display: grid; gap: 4px; }
   .howto code { font-family: 'Geist Mono', monospace; font-size: 12px; background: var(--sunk); border: 1px solid var(--line); padding: 0 5px; border-radius: 5px; }
 
+  /* task timeline */
+  .tlaxis, .tlrow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2.2fr) 150px; gap: 14px; align-items: center; }
+  .tlaxis { font-size: 11px; color: var(--ink-3); margin-bottom: 4px; }
+  .tlaxis .ticks { display: flex; justify-content: space-between; grid-column: 2; }
+  .tlgroup { font-size: 12px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: .04em; margin: 14px 0 4px; }
+  .tlrow { padding: 7px 8px; margin: 0 -8px; border-radius: 8px; cursor: pointer; }
+  .tlrow:hover { background: var(--sunk); }
+  .tlrow.hl { background: var(--sunk); box-shadow: inset 3px 0 0 var(--ink); }
+  .tlrow:focus-visible { outline: 2px solid var(--ink-2); outline-offset: 1px; }
+  .tlname { font-size: 13px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tlname .mono { font-size: 11.5px; color: var(--ink-3); margin-right: 6px; }
+  .tlbar { position: relative; height: 12px; border-radius: 3px; background: var(--sunk); border: 1px solid var(--line); }
+  .tlbar i { position: absolute; top: 0; bottom: 0; min-width: 3px; border-radius: 2px; }
+  .tlside { font-size: 12px; color: var(--ink-2); text-align: right; white-space: nowrap; }
+  .tlkey { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 12px; font-size: 11.5px; color: var(--ink-3); }
+  .tlkey span::before { content: ''; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; background: var(--c); }
+  @media (max-width: 640px) {
+    .tlaxis, .tlrow { grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; }
+    .tlaxis .ticks { grid-column: 1 / -1; } .tlaxis .ticks .mid { display: none; }
+    .tlbar { grid-column: 1 / -1; grid-row: 2; }
+  }
+  #flow .dim { opacity: .18; transition: opacity .3s; }
+  #flow foreignObject.hl .node { border-color: var(--ink); border-width: 2px; }
+
   .skel { background: linear-gradient(90deg, var(--sunk), var(--line), var(--sunk)); background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: var(--r); }
   @keyframes shimmer { to { background-position: -200% 0; } }
 
@@ -286,6 +310,13 @@
       <div class="sechead"><h2>How work flows</h2><p>Last 24 hours. A dot travels each time work is handed over.</p></div>
       <svg id="flow" role="img" aria-label="Pipeline diagram: you, queue, analysts, browser agent"></svg>
       <div class="howto" id="howto" hidden></div>
+    </section>
+
+    <section class="card" id="tlcard">
+      <div class="sechead"><h2>Task timeline</h2><p>Last 24 hours, newest first, by queue. Click a task to light up its path in the diagram.</p></div>
+      <div class="tlaxis" id="tlaxis"></div>
+      <div id="timeline"><div class="empty">Loading</div></div>
+      <div class="tlkey" id="tlkey"></div>
     </section>
 
     <section class="agents" id="agents">
@@ -694,6 +725,63 @@ function intro(v) {
     .forEach((l, i) => setTimeout(() => launch(l.from + '>' + l.to, linkColor(l)), 400 + i * 350));
 }
 
+/* ---------- task timeline: one bar per task, split into its stages, on a shared time axis ---------- */
+const SEG = { queued: ['var(--ink-3)', 'Queued'], analysing: ['var(--s0)', 'Analysing or in cloud'], waiting: ['var(--warning)', 'Waiting for you'],
+  ready: ['var(--line-2)', 'Ready'], browser: ['var(--s6)', 'Browser'], done: ['var(--good)', 'Done'], stopped: ['var(--critical)', 'Stopped'] };
+let hlTask = null;
+function renderTimeline() {
+  if (!qtasks || tab !== 'pipeline') return;
+  const now = Date.now(), dayAgo = now - 24 * 3600e3;
+  const rows = qtasks.filter(t => t.segments?.length && Date.parse(t.last) >= dayAgo).map(t => {
+    const segs = t.segments.map(x => ({ ...x }));
+    if (!CLOSED.has(t.stage)) segs[segs.length - 1].end = Math.max(segs[segs.length - 1].start, now); // still running
+    return { t, segs, start: segs[0].start, end: segs[segs.length - 1].end };
+  });
+  const t0 = Math.min(now - 3600e3, ...rows.map(r => r.start)), span = Math.max(1, now - t0);
+  const pct = ms => ((ms - t0) / span * 100).toFixed(2);
+  $('tlaxis').innerHTML = `<div class="ticks"><span>${hhmm(new Date(t0))}</span><span class="mid">${hhmm(new Date(t0 + span / 2))}</span><span>now</span></div>`;
+  const groups = new Map();
+  for (const r of rows.sort((a, b) => b.start - a.start)) {
+    const k = r.t.queue == null ? 'earlier' : r.t.queue;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(r);
+  }
+  const keys = [...groups.keys()].sort((a, b) => a === 'earlier' ? 1 : b === 'earlier' ? -1 : a - b);
+  const row = ({ t, segs, start, end }) => {
+    const tk = tokens?.tasks.find(x => x.id === t.id);
+    const bars = segs.map(x => `<i style="left:${pct(x.start)}%;width:${(Math.max(0, x.end - x.start) / span * 100).toFixed(2)}%;background:${SEG[x.group][0]}"
+      title="${esc(x.stage)}: ${hhmm(new Date(x.start))}${x.end > x.start ? '–' + hhmm(new Date(x.end)) + ' (' + dur(x.end - x.start) + ')' : ''}"></i>`).join('');
+    const cost = tk && (tk.cost || tk.unpriced) ? ' · ' + money(tk.cost, tk.unpriced) : '';
+    return `<div class="tlrow${hlTask === t.id ? ' hl' : ''}" data-tl="${esc(t.id)}" role="button" tabindex="0" aria-pressed="${hlTask === t.id}">
+      <div class="tlname"><span class="mono">${esc(t.id)}</span>${esc(t.title || '')}</div>
+      <div class="tlbar">${bars}</div>
+      <div class="tlside">${dur(end - start)}${cost}${tk?.cloud || t.cloud ? ' · <i class="ph ph-cloud" title="' + CLOUD_NOTE + '"></i>' : ''}</div></div>`;
+  };
+  const html = rows.length ? keys.map(k => `<div class="tlgroup">${k === 'earlier' ? 'Earlier (before queues)' : 'Queue ' + k}</div>${groups.get(k).map(row).join('')}`).join('')
+    : '<div class="empty">No queue tasks in the last 24 hours.</div>';
+  if ($('timeline').dataset.h !== html) { $('timeline').innerHTML = html; $('timeline').dataset.h = html; }
+  if (!$('tlkey').innerHTML) $('tlkey').innerHTML = Object.values(SEG).map(([c, l]) => `<span style="--c:${c}">${l}</span>`).join('');
+}
+function toggleHl(id) { hlTask = hlTask === id ? null : id; renderTimeline(); applyHighlight(visible()); }
+$('timeline').addEventListener('click', e => { const r = e.target.closest('[data-tl]'); if (r) toggleHl(r.dataset.tl); });
+$('timeline').addEventListener('keydown', e => { const r = e.target.closest('[data-tl]'); if (r && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); toggleHl(r.dataset.tl); } });
+// The highlighted task's path: its queue, its analysts and cloud node, and the browser agent if it got that far.
+function applyHighlight(v) {
+  const flow = $('flow');
+  flow.querySelectorAll('.dim, .hl').forEach(e => e.classList.remove('dim', 'hl'));
+  const t = hlTask && (qtasks || []).find(x => x.id === hlTask);
+  if (!t || !layout) return;
+  const on = new Set();
+  const q = v.queues.find(q => sameQueue(t, q.n));
+  if (q) on.add(q.key);
+  for (const h of v.helpers) if (h.name.endsWith(t.id)) on.add('sp:' + h.id);
+  for (const c of v.clouds) if (c.tasks.some(x => x.id === t.id)) on.add(c.key);
+  if (t.stages.some(x => ['with-browser', 'browser-done'].includes(x.stage)) && data.roles['web-worker']) on.add(data.roles['web-worker']);
+  flow.querySelectorAll('foreignObject[data-n]').forEach(e => e.classList.add(on.has(e.dataset.n) ? 'hl' : 'dim'));
+  flow.querySelectorAll('rect.ring[data-n]').forEach(e => on.has(e.dataset.n) || e.classList.add('dim'));
+  flow.querySelectorAll('[data-k]').forEach(e => { const [a, b] = e.dataset.k.split('>'); if (!(on.has(a) && on.has(b))) e.classList.add('dim'); });
+}
+
 /* ---------- queue tab: tasks, stages and approvals ---------- */
 const answering = {}; // task id -> message shown under its buttons
 function stepsHtml(t) {
@@ -957,6 +1045,8 @@ function render() {
       v.links.map(l => l.from + '>' + l.to).join('|'), v.queues.map(q => q.key).join('|')].join('#');
     if (sig !== flowSig) { buildFlow(v); flowSig = sig; }
     updateFlow(v);
+    applyHighlight(v);
+    renderTimeline();
     renderAgents(v);
     renderHowto(v);
   }

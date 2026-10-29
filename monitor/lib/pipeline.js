@@ -11,6 +11,21 @@ const PIPELINE_PY = process.env.PIPELINE_PY ||
   path.join(os.homedir(), 'Desktop/shopify-shop-demo/claude/scripts/pipeline/pipeline.py');
 const FILES = ['request', 'workorder', 'reply', 'result'];
 const ID = /^[A-Za-z0-9][A-Za-z0-9-]{0,63}$/;
+const GROUP = { queued: 'queued', analysing: 'analysing', 'in-cloud': 'analysing', 'awaiting-approval': 'waiting', ready: 'ready',
+  'with-browser': 'browser', 'browser-done': 'browser', done: 'done', cancelled: 'stopped', blocked: 'stopped', failed: 'stopped' };
+const ENDS = new Set(['done', 'cancelled', 'blocked', 'failed', 'reported']);
+
+// The task timeline: one segment per stage row, ending where the next row starts. An open task's last segment runs to
+// now; a finished one ends in a zero-length marker. Old stage names count as "queued". Never negative.
+function stageSegments(task, nowMs) {
+  const rows = task.stages || [];
+  return rows.map((r, i) => {
+    const start = Date.parse(r.ts);
+    let end = i + 1 < rows.length ? Date.parse(rows[i + 1].ts) : ENDS.has(r.stage) ? start : nowMs;
+    if (!(end >= start)) end = start;
+    return { stage: r.stage, group: GROUP[r.stage] || 'queued', start, end };
+  });
+}
 
 function readRows(stateDir) {
   try {
@@ -22,7 +37,7 @@ function readRows(stateDir) {
 const readJson = f => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
 
 // Tasks with stage history, where they run (cloud, or local and why), the agent on it, the open question and the answer; newest activity first.
-function readTasks(stateDir) {
+function readTasks(stateDir, nowMs = Date.now()) {
   const tasks = {};
   for (const r of readRows(stateDir)) {
     if (!r.id) continue;
@@ -44,6 +59,7 @@ function readTasks(stateDir) {
     t.questions = Array.isArray(qs) ? qs.map(q => q.q) : []; // open questions; answered ones move into answer.json
     t.question = t.questions.length ? t.questions[t.questions.length - 1] : null;
     t.answer = readJson(path.join(dir, 'answer.json'));
+    t.segments = stageSegments(t, nowMs);
     t.cloud = fs.existsSync(path.join(dir, 'cloud.json')); // analysed in a cloud session: its tokens aren't in local transcripts
     t.files = {};
     for (const f of FILES) if (fs.existsSync(path.join(dir, f + '.md'))) t.files[f] = true;
@@ -72,4 +88,4 @@ function answerTask(stateDir, id, value) {
   });
 }
 
-module.exports = { readRows, readTasks, taskFile, answerTask, PIPELINE_PY };
+module.exports = { stageSegments, readRows, readTasks, taskFile, answerTask, PIPELINE_PY };
