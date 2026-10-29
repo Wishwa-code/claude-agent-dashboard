@@ -75,6 +75,38 @@ test('task file endpoint serves only known files', async () => {
   assert.strictEqual((await fetch(`${base}/api/tasks/..%2Fx/file/request`)).status, 404);
 });
 
+test('bad percent-escape gives 404 and the server stays up', async () => {
+  assert.strictEqual((await fetch(`${base}/api/tasks/%E0/file/request`)).status, 404);
+  assert.strictEqual((await fetch(`${base}/api/tasks/Q-001/file/%E0`)).status, 404);
+  assert.strictEqual((await fetch(`${base}/api/tasks`)).status, 200);
+});
+
+test('tasks lists every open question', async () => {
+  pl('new', 'Two amber steps');
+  pl('ask', 'Q-002', '--question', 'Step 2 is amber. OK?');
+  pl('ask', 'Q-002', '--question', 'Step 4 is amber. OK?');
+  const t = (await (await fetch(base + '/api/tasks')).json()).find(x => x.id === 'Q-002');
+  assert.deepStrictEqual(t.questions, ['Step 2 is amber. OK?', 'Step 4 is amber. OK?']);
+});
+
+test('answer starting with dashes is stored as typed', async () => {
+  pl('new', 'Dash answer');
+  const r = await fetch(`${base}/api/tasks/Q-003/answer`, { method: 'POST',
+    headers: { 'content-type': 'application/json', origin: `http://localhost:${port}` },
+    body: JSON.stringify({ value: '--help', token }) });
+  assert.strictEqual((await r.json()).ok, true);
+  assert.strictEqual(JSON.parse(fs.readFileSync(path.join(state, 'tasks', 'Q-003', 'answer.json'))).value, '--help');
+});
+
+const hook = (headers, body = '{"session_id":"web","hook_event_name":"Stop"}') =>
+  fetch(`${base}/api/hooks/event`, { method: 'POST', headers, body });
+
+test('hook endpoint refuses browser requests', async () => {
+  assert.strictEqual((await hook({ 'content-type': 'application/json', origin: 'http://evil.example' })).status, 403);
+  assert.strictEqual((await hook({ 'content-type': 'text/plain' })).status, 415);
+  assert.strictEqual((await hook({ 'content-type': 'application/json' })).status, 200);
+});
+
 test('tokens endpoint answers', async () => {
   const r = await fetch(base + '/api/tokens');
   assert.strictEqual(r.status, 200);

@@ -285,11 +285,16 @@ function sendJson(res, status, body) {
 http.createServer((req, res) => {
   // Only our own host names: a page on another site can't reach us through DNS rebinding.
   if (!OK_HOSTS.has(req.headers.host)) { res.writeHead(403); res.end(); return; }
+  const dec = x => { try { return decodeURIComponent(x); } catch { return ''; } }; // a bad escape must not crash the server
   const url = new URL(req.url, 'http://localhost');
   const p = url.pathname;
   let m;
   if (req.method === 'POST' && p === '/api/hooks/event') {
-    // Always answer 200 at once: a hook must never slow down or block Claude Code.
+    // Claude Code sends JSON with no Origin. A web page can't: it sends an Origin, and can only send JSON after a
+    // CORS preflight we never answer. So these two checks keep other websites from writing fake events.
+    if (req.headers.origin) { res.writeHead(403); res.end(); return; }
+    if (!/^application\/json\b/.test(req.headers['content-type'] || '')) { res.writeHead(415); res.end(); return; }
+    // Answer quickly: a hook must never slow down or block Claude Code.
     readBody(req, body => {
       try {
         for (const msg of handleHook(db, JSON.parse(body))) stream.broadcast(msg);
@@ -303,7 +308,7 @@ http.createServer((req, res) => {
       let j = {};
       try { j = JSON.parse(body); } catch { /* empty or bad body: refused below */ }
       if (!OK_ORIGINS.has(req.headers.origin) || j.token !== PAGE_TOKEN) return sendJson(res, 403, { ok: false, message: 'forbidden' });
-      const id = decodeURIComponent(m[1]);
+      const id = dec(m[1]);
       const r = await answerTask(STATE, id, j.value);
       stream.broadcast({ type: 'task_updated', data: { id }, timestamp: new Date().toISOString() });
       sendJson(res, 200, r);
@@ -313,7 +318,7 @@ http.createServer((req, res) => {
   } else if (p === '/api/tasks') {
     sendJson(res, 200, readTasks(STATE));
   } else if ((m = /^\/api\/tasks\/([^/]+)\/file\/([^/]+)$/.exec(p))) {
-    const text = taskFile(STATE, decodeURIComponent(m[1]), decodeURIComponent(m[2]));
+    const text = taskFile(STATE, dec(m[1]), dec(m[2]));
     if (text === null) { res.writeHead(404); res.end(); return; }
     res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
     res.end(text);

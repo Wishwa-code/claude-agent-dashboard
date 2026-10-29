@@ -57,6 +57,15 @@ test('Stop sets the main agent waiting and SessionEnd ends the session', () => {
   assert.strictEqual(db.getSession('s1').status, 'ended');
 });
 
+test('tool output is not stored', () => {
+  const db = freshDb();
+  handleHook(db, { ...base, hook_event_name: 'PostToolUse', tool_name: 'Read',
+    tool_input: { file_path: '/p/secret.md' }, tool_response: { file: { content: 'password: hunter2' } } });
+  const data = db.recentEvents(1, 's1')[0].data;
+  assert.ok(!data.includes('hunter2'));
+  assert.strictEqual(JSON.parse(data).tool_input.file_path, '/p/secret.md');
+});
+
 test('bad payload does not throw', () => {
   const db = freshDb();
   assert.deepStrictEqual(handleHook(db, {}), []);

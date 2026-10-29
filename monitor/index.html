@@ -633,7 +633,8 @@ function qtaskHtml(t) {
   let ask = '';
   if (t.answer) ask = `<div class="answered"><i class="ph ph-check-circle"></i> Answered ${t.answer.by === 'dashboard' ? 'on the dashboard' : 'in chat'} at ${hhmm(t.answer.ts)}: <b>${esc(t.answer.value)}</b></div>`;
   else if (t.stage === 'awaiting-approval') ask = `<div class="ask" data-ask="${esc(t.id)}">
-      <div class="q">${esc(t.question || 'The queue needs your answer.')}</div>
+      ${(t.questions?.length ? t.questions : ['The queue needs your answer.']).map((q, i, a) => `<div class="q">${a.length > 1 ? `<b>${i + 1}.</b> ` : ''}${esc(q)}</div>`).join('')}
+      ${t.questions?.length > 1 ? `<div class="msg">One answer covers all ${t.questions.length} questions. To answer them differently, type it.</div>` : ''}
       <div class="row"><button class="yes" data-answer="approve">Approve</button><button data-answer="reject">Reject</button>
         <input type="text" placeholder="Or type an answer (an option, or new instructions)" aria-label="Answer for ${esc(t.id)}"><button data-answer="text">Send</button></div>
       ${answering[t.id] ? `<div class="msg">${esc(answering[t.id])}</div>` : ''}</div>`;

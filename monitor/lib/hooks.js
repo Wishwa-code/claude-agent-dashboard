@@ -5,6 +5,8 @@
 const { clip, toolSummary } = require('./transcript');
 
 const mainId = sid => `${sid}-main`;
+// Keep what the tool was asked to do, never what it returned: tool output can hold file contents and secrets.
+const stored = ({ tool_response, ...rest }) => rest;
 
 function handleHook(db, p, now = new Date().toISOString()) {
   if (!p || typeof p !== 'object' || !p.session_id || !p.hook_event_name) return [];
@@ -41,7 +43,7 @@ function handleHook(db, p, now = new Date().toISOString()) {
   else if (p.tool_name) summary = clip(toolSummary(p.tool_name, p.tool_input || {}), 200);
   else if (ev === 'Notification') summary = clip(p.message, 200);
   const id = db.insertEvent({ session_id: sid, agent_id: p.agent_id || mainId(sid), event_type: ev,
-    tool_name: p.tool_name || null, summary, data: JSON.stringify(p), created_at: now });
+    tool_name: p.tool_name || null, summary, data: JSON.stringify(stored(p)), created_at: now });
   msg('new_event', { id, session_id: sid, event_type: ev, tool_name: p.tool_name || null, summary, created_at: now });
 
   if (ev === 'PreToolUse' && p.tool_name === 'SendMessage' && p.tool_input?.to) {

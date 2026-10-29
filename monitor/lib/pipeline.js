@@ -37,7 +37,8 @@ function readTasks(stateDir) {
   for (const t of Object.values(tasks)) {
     const dir = path.join(stateDir, 'tasks', t.id);
     const qs = readJson(path.join(dir, 'questions.json'));
-    t.question = Array.isArray(qs) && qs.length ? qs[qs.length - 1].q : null;
+    t.questions = Array.isArray(qs) ? qs.map(q => q.q) : []; // open questions; answered ones move into answer.json
+    t.question = t.questions.length ? t.questions[t.questions.length - 1] : null;
     t.answer = readJson(path.join(dir, 'answer.json'));
     t.files = {};
     for (const f of FILES) if (fs.existsSync(path.join(dir, f + '.md'))) t.files[f] = true;
@@ -57,7 +58,7 @@ function answerTask(stateDir, id, value) {
     if (!ID.test(id)) return resolve({ ok: false, message: 'bad task id' });
     const v = String(value ?? '').trim();
     if (!v) return resolve({ ok: false, message: 'empty answer' });
-    execFile('python3', [PIPELINE_PY, 'answer', id, v, '--by', 'dashboard'],
+    execFile('python3', [PIPELINE_PY, 'answer', id, '--by', 'dashboard', '--', v], // "--": an answer like "--help" stays an answer
       { env: { ...process.env, PIPELINE_STATE: stateDir }, timeout: 10000 }, (err, stdout, stderr) => {
         const out = String(stdout || '').trim();
         if (!err) return resolve({ ok: true, message: out });
