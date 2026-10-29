@@ -1,7 +1,7 @@
 # Two (or more) queues, clear names, cost per task, and a better flow view: design
 
 - **Date:** 2026-10-29
-- **Status:** draft after the builder check, waiting for the user's approval
+- **Status:** approved by the user 2026-10-29
 - **Builds on:** `2026-10-29-task-queue-and-dashboard-design.md` (v1, built and merged the same day).
 - **Repos:**
   - this repo holds the dashboard;
