@@ -6,6 +6,8 @@
 //
 // Reads ~/.claude/sessions/<pid>.json (live sessions: name, busy/idle) and the tail of each session's transcript in
 // ~/.claude/projects/<project>/. Never reads the *.key files. Listens on 127.0.0.1 only.
+// Since 2026-10-29 it also takes Claude Code hook events (POST /api/hooks/event) into SQLite (DASHBOARD_DB) and pushes
+// live updates over SSE (GET /api/stream).
 //
 // A "task" is one piece of work a session was given: a prompt from you, a "BROWSER TASK <id>" from another session,
 // or any other free-form message from a session. Tool calls, replies and messages sent are steps of the current task.
@@ -21,7 +23,8 @@ const TRANSCRIPTS = path.join(os.homedir(), '.claude/projects', PROJECT_DIR.repl
 const SESSIONS = path.join(os.homedir(), '.claude/sessions');
 const STATE = process.env.PIPELINE_STATE || path.join(os.homedir(), '.local/state/polek-dev'); // override only for testing
 const BROWSER_AGENT_FILE = path.join(STATE, 'browser-agent');
-const ROLES = ['intake', 'dispatcher', 'web-worker']; // registered by claude/scripts/pipeline/pipeline.py
+const ROLES = ['queue', 'web-worker', 'intake', 'dispatcher']; // registered by claude/scripts/pipeline/pipeline.py
+const DB_FILE = process.env.DASHBOARD_DB || path.join(os.homedir(), '.local/state/claude-dashboard/dashboard.sqlite');
 const LEDGER = path.join(STATE, 'pipeline.jsonl');
 const FIRST_READ = 24 * 1024 * 1024; // only the tail of a transcript is read on first sight (they reach 85 MB)
 const MAX_EVENTS = 300;
@@ -36,6 +39,9 @@ const colorSlot = {}; // session id -> categorical slot, fixed once given so a c
 let nextSlot = 0;
 
 const { clip, taskName, humanise, toolSummary, toolLabel, toEvents } = require('./lib/transcript');
+const { openDb } = require('./lib/db');
+const { handleHook } = require('./lib/hooks');
+const { createStream } = require('./lib/sse');
 
 function newTask(c, e, name, from) {
   const t = { id: e.id, name, from, prompt: e.text, start: e.ts, end: e.ts, steps: 0, tools: {}, step: null,
@@ -222,8 +228,36 @@ function snapshot() {
   return { now: Date.now(), browserAgent, roles, pipeline: readLedger(cutoff), bucketMin: BUCKET_MIN, sessions, links: Object.values(links) };
 }
 
+const db = openDb(DB_FILE);
+const stream = createStream();
+const MAX_BODY = 1024 * 1024;
+
+function readBody(req, cb) {
+  let size = 0;
+  const chunks = [];
+  req.on('data', c => {
+    size += c.length;
+    if (size > MAX_BODY) { req.destroy(); return; }
+    chunks.push(c);
+  });
+  req.on('end', () => cb(Buffer.concat(chunks).toString('utf8')));
+}
+
 http.createServer((req, res) => {
-  if (req.url === '/api/sessions') {
+  if (req.method === 'POST' && req.url === '/api/hooks/event') {
+    // Always answer 200 at once: a hook must never slow down or block Claude Code.
+    readBody(req, body => {
+      try {
+        for (const m of handleHook(db, JSON.parse(body))) stream.broadcast(m);
+      } catch (e) {
+        console.error('hook event:', e.message);
+      }
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end('{}');
+    });
+  } else if (req.url === '/api/stream') {
+    stream.handler(req, res);
+  } else if (req.url === '/api/sessions') {
     try {
       res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
       res.end(JSON.stringify(snapshot()));
