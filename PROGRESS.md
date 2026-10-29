@@ -72,7 +72,7 @@ What we won't copy: Codex/Cursor support, plugins/marketplace, i18n, the desktop
 Optional quick look: run CCAM once on port 4820 to see its UI and decide which views are worth copying, then remove its hooks again.
 
 Planned phases:
-- [ ] **P1: Ingest.** Add HTTP hooks to `shopify-shop-demo/.claude/settings.json` (project-level, so other projects are not affected) for these events:
+- [x] **P1: Ingest.** Add HTTP hooks to `shopify-shop-demo/.claude/settings.json` (project-level, so other projects are not affected) for these events:
   - `SessionStart`, `SessionEnd`
   - `UserPromptSubmit`
   - `PreToolUse`, `PostToolUse`, `PostToolUseFailure`
@@ -80,11 +80,11 @@ Planned phases:
   - `Stop`, `Notification`
 
   Each hook POSTs to `http://127.0.0.1:4020/api/hooks/event`. Check first that a connection failure is silent (the HTTP hooks docs say non-2xx/timeout is non-blocking by default).
-- [ ] **P2: Store.** Use `node:sqlite` (built into Node 22, so no dependency; it works on this machine with Node v22.18.0 and prints an experimental warning). Tables follow CCAM's `sessions / agents / events / token_usage`, plus our `handoffs` (from → to, kind, task id, first line).
-- [ ] **P3: Shared parser and backfill.** Move the current `toEvents()` transcript parser into a module that both the hook path and a one-off import use. Add token usage from `message.usage`.
-- [ ] **P4: Push.** An SSE endpoint `/api/stream`, so `index.html` updates on events instead of polling.
-- [ ] **P5: Views.** Keep the handoff diagram. Add cost per task, session and subagent, a subagent tree from `parent_agent_id`, and the pipeline stage timeline.
-- [ ] **P6: Fallback.** Keep the transcript reader for sessions that started before the hooks existed. Phase it out later.
+- [x] **P2: Store.** Use `node:sqlite` (built into Node 22, so no dependency; it works on this machine with Node v22.18.0 and prints an experimental warning). Tables follow CCAM's `sessions / agents / events / token_usage`, plus our `handoffs` (from → to, kind, task id, first line).
+- [x] **P3: Shared parser and backfill.** Move the current `toEvents()` transcript parser into a module that both the hook path and a one-off import use. Add token usage from `message.usage`.
+- [x] **P4: Push.** An SSE endpoint `/api/stream`, so `index.html` updates on events instead of polling.
+- [x] **P5: Views.** Keep the handoff diagram. Add cost per task, session and subagent, a subagent tree from `parent_agent_id`, and the pipeline stage timeline.
+- [x] **P6: Fallback.** Keep the transcript reader for sessions that started before the hooks existed. Phase it out later.
 
 ## 6. Open questions for the user
 
@@ -99,3 +99,16 @@ Planned phases:
 - **2026-10-29:** Moved the monitor code here and made this folder a git repo. `PROJECT_DIR` now comes from an env var instead of the code's own path. Tested on port 4029: 3 sessions and 2 links returned, page 200. Updated the shop repo's `claude/CLAUDE.md` to point here.
 - **2026-10-29:** Spike S1 passed: Claude Code HTTP hooks to a port with nothing listening show no error and add no delay. With a listener, the events arrive. The dashboard hooks use `type: "http"`.
 - **2026-10-29:** The analyst agent works. On a test run it asked instead of guessing on an unclear task, and wrote a work order with an approval question for an amber one. Its startup context is 17k (the general-purpose planners used about 41k). Spike S3 passed: continuing an analyst costs 5.4k on its first turn against 22.2k for a fresh one, so reuse stays.
+- **2026-10-29: built on branch `feat/task-queue`** (both repos, not merged yet).
+  - **Dashboard:** hooks → SQLite → SSE; Queue tab with approvals; Tokens tab with context warnings; `/api/tasks`, `/api/tokens`, `/api/tasks/:id/answer` (origin + per-run token + Host check). `npm test`: 18/18.
+  - **Polek repo:**
+    - `pipeline.py` v2: Q-ids, task folders, `ask`/`answer`/`wait-answer`/`next-ready`; 10 tests.
+    - `analyst` agent and context pack.
+    - `/queue` skill (Intake and Dispatcher retired).
+    - Browser agent runs each work order in a fresh subagent.
+    - HTTP hooks.
+  - **Still to verify, with the user:**
+    - spike S2: can a subagent drive the logged-in browser? Needs a live `/browser-agent`;
+    - a dry run of `/queue`;
+    - one real approved task end to end.
+  - **On hold:** the agreement checker (Lighthouse + visual-check after each task); stage `checking` is reserved for it.
