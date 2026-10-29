@@ -44,6 +44,7 @@ function readTasks(stateDir) {
     t.questions = Array.isArray(qs) ? qs.map(q => q.q) : []; // open questions; answered ones move into answer.json
     t.question = t.questions.length ? t.questions[t.questions.length - 1] : null;
     t.answer = readJson(path.join(dir, 'answer.json'));
+    t.cloud = fs.existsSync(path.join(dir, 'cloud.json')); // analysed in a cloud session: its tokens aren't in local transcripts
     t.files = {};
     for (const f of FILES) if (fs.existsSync(path.join(dir, f + '.md'))) t.files[f] = true;
   }

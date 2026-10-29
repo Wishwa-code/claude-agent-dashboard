@@ -42,3 +42,22 @@ test('sessionUsage reads main and subagent transcripts with descriptions', () =>
   assert.strictEqual(all.abc.subagents['x1'].description, 'Analyst Q-003');
   assert.strictEqual(all.abc.subagents['x1'].byModel[MODEL].inp, 7);
 });
+
+test('pricing: missing split and unknown model', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'usage-'));
+  const file = path.join(dir, 's.jsonl');
+  const synth = JSON.stringify({ type: 'assistant', message: { id: 's1', model: '<synthetic>', usage: { input_tokens: 3, output_tokens: 4 } } }) + '\n';
+  fs.writeFileSync(file, line('m1', { input_tokens: 0, cache_creation_input_tokens: 1000, output_tokens: 0 }) + synth);
+  const st = readUsage(file);
+  assert.ok(Math.abs(st.cost - 1000 * 5 / 1e6) < 1e-12, String(st.cost)); // no cache_creation split: 5 m rate
+  assert.strictEqual(st.unpriced, 7);
+  assert.strictEqual(st.byModel[MODEL].cw, 1000);
+});
+
+test('pricing: 1h cache writes at their own rate', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'usage-'));
+  const file = path.join(dir, 's.jsonl');
+  fs.writeFileSync(file, line('m1', { input_tokens: 0, cache_creation_input_tokens: 1000, output_tokens: 0,
+    cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 1000 } }));
+  assert.ok(Math.abs(readUsage(file).cost - 1000 * 8 / 1e6) < 1e-12);
+});

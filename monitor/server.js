@@ -47,6 +47,7 @@ const { createStream } = require('./lib/sse');
 const { readTasks, taskFile, answerTask } = require('./lib/pipeline');
 const { sessionUsage, inputEq, total, WEIGHTS } = require('./lib/usage');
 const { readQueues, createLabeller } = require('./lib/labels');
+const { SOURCE: PRICING } = require('./lib/pricing');
 const labeller = createLabeller(LABELS_FILE);
 const sessionLabels = {}; // session id -> last label, for the tokens view
 
@@ -155,8 +156,9 @@ function liveSessions() {
   return out;
 }
 
+const firstLine = f => { try { return fs.readFileSync(f, 'utf8').split('\n')[0].trim(); } catch { return ''; } };
+
 function snapshot() {
-  const firstLine = f => { try { return fs.readFileSync(f, 'utf8').split('\n')[0].trim(); } catch { return ''; } };
   const roles = {};
   for (const r of ROLES) roles[r] = firstLine(path.join(STATE, 'roles', r));
   if (!roles['web-worker']) roles['web-worker'] = firstLine(BROWSER_AGENT_FILE);
@@ -240,6 +242,8 @@ function snapshot() {
 // description ends with the task id ("Analyst Q-003", "Browser worker Q-003").
 function tokensView() {
   const live = liveSessions();
+  const queues = readQueues(STATE);
+  const browserAgent = firstLine(path.join(STATE, 'roles', 'web-worker')) || firstLine(BROWSER_AGENT_FILE);
   const byId = new Map(live.map(s => [s.sessionId, s]));
   const cutoff = Date.now() - RECENT_HOURS * 3600e3;
   const ids = new Set();
@@ -252,23 +256,31 @@ function tokensView() {
   }
   const usage = sessionUsage(TRANSCRIPTS, ids);
   const tasks = {};
-  const sum = st => ({ inputEq: Math.round(inputEq(total(st.byModel))), turns: st.turns, context: st.context, lastTs: st.lastTs });
+  const sum = st => ({ inputEq: Math.round(inputEq(total(st.byModel))), cost: st.cost, unpriced: st.unpriced, turns: st.turns,
+    context: st.context, lastTs: st.lastTs });
+  const taskRow = id => tasks[id] || (tasks[id] = { id, inputEq: 0, cost: 0, unpriced: 0, agents: [], cloud: false });
+  for (const t of readTasks(STATE)) if (t.cloud) taskRow(t.id).cloud = true; // shown even when nothing ran locally
   const sessions = Object.entries(usage).map(([id, u]) => {
     const subagents = Object.entries(u.subagents).map(([aid, st]) => {
       const row = { id: aid, description: st.description, ...sum(st) };
       const task = /\b(Q-\d+)$/.exec(st.description || '')?.[1];
       if (task) {
-        const t = tasks[task] || (tasks[task] = { id: task, inputEq: 0, agents: [] });
+        const t = taskRow(task);
         t.inputEq += row.inputEq;
+        t.cost += row.cost;
+        t.unpriced += row.unpriced;
         t.agents.push(st.description);
       }
       return row;
     }).sort((a, b) => b.inputEq - a.inputEq);
     const s = byId.get(id);
-    return { id, name: s?.name || sessionNames[id] || '(closed) ' + id.slice(0, 8), label: sessionLabels[id] || '', live: !!s, ...sum(u.main),
-      byModel: u.main.byModel, subagents, subagentsEq: subagents.reduce((a, x) => a + x.inputEq, 0) };
+    const name = s?.name || sessionNames[id] || '(closed) ' + id.slice(0, 8);
+    const label = sessionLabels[id] || labeller.label({ id, name }, { queues, browserAgentName: s ? browserAgent : '' }).label;
+    return { id, name, label, live: !!s, ...sum(u.main),
+      byModel: u.main.byModel, subagents, subagentsEq: subagents.reduce((a, x) => a + x.inputEq, 0),
+      subagentsCost: subagents.reduce((a, x) => a + x.cost, 0) };
   }).sort((a, b) => (b.live - a.live) || (b.inputEq - a.inputEq));
-  return { now: Date.now(), weights: WEIGHTS, sessions, tasks: Object.values(tasks) };
+  return { now: Date.now(), weights: WEIGHTS, pricing: PRICING, sessions, tasks: Object.values(tasks) };
 }
 
 const db = openDb(DB_FILE);

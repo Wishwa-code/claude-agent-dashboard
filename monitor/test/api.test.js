@@ -137,3 +137,13 @@ test('sessions endpoint lists registered queues', async () => {
   assert.deepStrictEqual(j.queues.map(q => [q.n, q.live]), [[1, false]]);
   assert.strictEqual(j.queues[0].open, 1);
 });
+
+test('tokens: cost fields, price source, and cloud tasks listed even without local subagents', async () => {
+  const id = pl('new', 'Cloud analysed', '--queue', '1');
+  fs.writeFileSync(path.join(state, 'tasks', id, 'cloud.json'), JSON.stringify({ url: 'https://claude.ai/code/session_X' }));
+  const j = await (await fetch(base + '/api/tokens')).json();
+  assert.strictEqual(j.pricing.read, '2026-10-29');
+  const t = j.tasks.find(x => x.id === id);
+  assert.deepStrictEqual([t.cloud, t.cost, t.inputEq], [true, 0, 0]);
+  assert.strictEqual((await (await fetch(base + '/api/tasks')).json()).find(x => x.id === id).cloud, true);
+});

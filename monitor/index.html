@@ -234,6 +234,8 @@
   .ctxpill { font: 500 11px 'Geist Mono', monospace; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink-2); }
   .ctxpill.amber { border-color: var(--warning); color: var(--ink); } .ctxpill.red { border-color: var(--critical); color: var(--critical); }
   @media (max-width: 760px) { .tok { grid-template-columns: 1fr; gap: 8px; } .tok .nums { text-align: left; } }
+  .costnote { font-size: 12.5px; color: var(--ink-2); padding: 8px 12px; margin-bottom: 14px; border-radius: 8px; background: var(--sunk); border: 1px solid var(--line); }
+  .costnote a { color: inherit; }
   .howto { font-size: 13px; color: var(--ink-2); display: grid; gap: 4px; }
   .howto code { font-family: 'Geist Mono', monospace; font-size: 12px; background: var(--sunk); border: 1px solid var(--line); padding: 0 5px; border-radius: 5px; }
 
@@ -290,11 +292,12 @@
 
   <div id="view-tokens" hidden>
     <section class="card">
+      <div class="costnote" id="costnote">API-equivalent cost at list prices (platform.claude.com pricing, read 2026-10-29). On a Pro/Max plan this is not what you pay.</div>
       <div class="sechead"><h2>Context per session</h2><p>What each session re-sends on every turn. Over 200k is amber, over 400k red: safe to /clear, state is in the queue.</p></div>
       <div id="toksessions"><div class="empty">Loading</div></div>
     </section>
     <section class="card">
-      <div class="sechead"><h2>Tokens per queue task</h2><p>Analysts and browser workers whose description ends with the task id. Input-equivalent: cache write ×1.25, cache read ×0.1, output ×5.</p></div>
+      <div class="sechead"><h2>Cost per queue task</h2><p>Analysts and browser workers whose description ends with the task id. Tokens are input-equivalent: cache write ×1.25, cache read ×0.1, output ×5.</p></div>
       <div id="toktasks"><div class="empty">Loading</div></div>
     </section>
   </div>
@@ -332,6 +335,9 @@ const ORDER = ['queue', 'web-worker'];
 const STEPS = [['queued', 'Queued'], ['analysing', 'Analysing'], ['awaiting-approval', 'Your OK'], ['ready', 'Ready'], ['with-browser', 'Browser'], ['browser-done', 'Checked'], ['done', 'Done']];
 const CLOSED = new Set(['done', 'cancelled', 'failed', 'reported']);
 const TOKEN = document.querySelector('meta[name="dash-token"]')?.content || '';
+// API-equivalent dollars; a total made only of tokens from a model with no price says so instead of "$0.00".
+const money = (c, unpriced = 0) => !c && unpriced ? 'no price' : c < 0.01 ? (c ? '<$0.01' : '$0.00') : '$' + c.toFixed(2);
+const CLOUD_NOTE = 'analysis ran in the cloud, not counted';
 const kfmt = n => n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? Math.round(n / 1e3) + 'k' : String(n);
 const ctxLevel = n => n > 400e3 ? 'red' : n > 200e3 ? 'amber' : '';
 
@@ -660,7 +666,7 @@ function qtaskHtml(t) {
     <div class="qhead">
       <div><div class="ttl">${esc(t.title || t.id)}</div><div class="tid"><span class="mono">${esc(t.id)}</span>${whereHtml(t)}${t.agent ? `<span>${esc(t.agent)}</span>` : ''}</div></div>
       ${stepsHtml(t)}
-      <div class="side"><time>${CLOSED.has(t.stage) ? 'closed ' + hhmm(since) : 'waiting ' + dur(Date.now() - Date.parse(since))}</time>${tk ? `<span>${kfmt(tk.inputEq)} tokens</span>` : ''}</div>
+      <div class="side"><time>${CLOSED.has(t.stage) ? 'closed ' + hhmm(since) : 'waiting ' + dur(Date.now() - Date.parse(since))}</time>${tk ? `<span title="API-equivalent, not your bill">${money(tk.cost, tk.unpriced)} · ${kfmt(tk.inputEq)} tokens</span>` : ''}${tk?.cloud || t.cloud ? `<span>${CLOUD_NOTE}</span>` : ''}</div>
     </div>
     ${files ? `<div class="qfiles">${files}</div>` : ''}${ask}
   </div>`;
@@ -731,15 +737,15 @@ function renderTokens() {
       <div><div class="nm">${s.live ? '<i class="ph-fill ph-circle" style="color:var(--good);font-size:9px"></i>' : ''}${esc(s.label || s.name)}</div>
         <div class="sub">${s.label ? `<span class="mono">${esc(s.name)}</span> · ` : ''}${s.turns} turns, last ${hhmm(s.lastTs)}${s.subagents.length ? `, ${s.subagents.length} subagents` : ''}</div></div>
       ${ctxBar(s.context)}
-      <div class="nums"><b>${kfmt(s.inputEq + s.subagentsEq)}</b> tokens<div class="sub">${kfmt(s.inputEq)} main${s.subagentsEq ? ` + ${kfmt(s.subagentsEq)} subagents` : ''}</div></div>
-      ${s.subagents.length ? `<div class="subs">${s.subagents.slice(0, 8).map(a => `<div><span>${esc(a.description || a.id)}</span><span class="mono">${kfmt(a.inputEq)}, ${a.turns} turns</span></div>`).join('')}</div>` : ''}
+      <div class="nums"><b>${money(s.cost + s.subagentsCost, s.unpriced)}</b> · ${kfmt(s.inputEq + s.subagentsEq)} tokens<div class="sub">${money(s.cost)} main${s.subagentsEq ? ` + ${money(s.subagentsCost)} subagents` : ''}</div></div>
+      ${s.subagents.length ? `<div class="subs">${s.subagents.slice(0, 8).map(a => `<div><span>${esc(a.description || a.id)}</span><span class="mono">${money(a.cost, a.unpriced)}, ${kfmt(a.inputEq)}, ${a.turns} turns</span></div>`).join('')}</div>` : ''}
     </div>`).join('') : '<div class="empty">No sessions in the last 24 hours. Tick "Closed sessions" to see closed ones.</div>';
   if ($('toksessions').dataset.h !== html) { $('toksessions').innerHTML = html; $('toksessions').dataset.h = html; }
-  const th = tokens.tasks.length ? tokens.tasks.sort((a, b) => b.inputEq - a.inputEq).map(t => `<div class="tok">
+  const th = tokens.tasks.length ? tokens.tasks.sort((a, b) => b.cost - a.cost || b.inputEq - a.inputEq).map(t => `<div class="tok">
       <div><div class="nm mono">${esc(t.id)}</div><div class="sub">${esc(qtasks?.find(x => x.id === t.id)?.title || '')}</div></div>
-      <div class="sub">${t.agents.map(esc).join(', ')}</div>
-      <div class="nums"><b>${kfmt(t.inputEq)}</b> tokens</div></div>`).join('')
-    : '<div class="empty">No analyst or browser-worker runs yet.</div>';
+      <div class="sub">${t.cloud ? `<span class="where cloud"><i class="ph ph-cloud"></i> cloud</span> ${CLOUD_NOTE}${t.agents.length ? '; ' : ''}` : ''}${t.agents.map(esc).join(', ')}</div>
+      <div class="nums"><b>${money(t.cost, t.unpriced)}</b> · ${kfmt(t.inputEq)} tokens</div></div>`).join('')
+    : '<div class="empty">No analyst, browser-worker or cloud runs yet.</div>';
   if ($('toktasks').dataset.h !== th) { $('toktasks').innerHTML = th; $('toktasks').dataset.h = th; }
 }
 

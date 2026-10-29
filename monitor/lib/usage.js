@@ -2,10 +2,12 @@
 //
 // Each assistant message's `message.usage` is counted once per `message.id` (a streamed message is written on
 // several lines with the same id). "Context" is input + cache read + cache creation of the latest turn: the
-// amount the session re-sends on every turn.
+// amount the session re-sends on every turn. "cost" is the API-equivalent price of every turn (lib/pricing.js);
+// turns of a model with no price add their tokens to "unpriced" instead.
 'use strict';
 const fs = require('fs');
 const path = require('path');
+const { turnCost } = require('./pricing');
 
 const CHUNK = 8 * 1024 * 1024;
 const WEIGHTS = { inp: 1, cw: 1.25, cr: 0.1, out: 5 }; // relative to the base input price
@@ -13,7 +15,7 @@ const WEIGHTS = { inp: 1, cw: 1.25, cr: 0.1, out: 5 }; // relative to the base i
 const inputEq = u => u.inp * WEIGHTS.inp + u.cw * WEIGHTS.cw + u.cr * WEIGHTS.cr + u.out * WEIGHTS.out;
 
 function emptyState() {
-  return { offset: 0, partial: '', seen: new Set(), byModel: {}, turns: 0, context: 0, lastTs: '' };
+  return { offset: 0, partial: '', seen: new Set(), byModel: {}, turns: 0, context: 0, lastTs: '', cost: 0, unpriced: 0 };
 }
 
 function addLine(st, line) {
@@ -28,6 +30,13 @@ function addLine(st, line) {
     out: u.output_tokens || 0 };
   const t = st.byModel[m.model || '?'] || (st.byModel[m.model || '?'] = { inp: 0, cw: 0, cr: 0, out: 0 });
   for (const k in row) t[k] += row[k];
+  // Cache writes split into 5 m and 1 h when the transcript says so; older lines have no split: all 5 m.
+  const split = u.cache_creation || {};
+  const cw1h = split.ephemeral_1h_input_tokens || 0;
+  const cw5 = split.ephemeral_5m_input_tokens ?? row.cw - cw1h;
+  const c = turnCost(m.model, { inp: row.inp, cw5, cw1h, cr: row.cr, out: row.out });
+  if (c === null) st.unpriced += row.inp + row.cw + row.cr + row.out;
+  else st.cost += c;
   st.turns++;
   st.context = row.inp + row.cw + row.cr;
   if (o.timestamp) st.lastTs = o.timestamp;
