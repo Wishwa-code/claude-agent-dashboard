@@ -186,6 +186,50 @@
   @keyframes arrive { from { background: color-mix(in srgb, var(--good) 14%, transparent); } to { background: transparent; } }
   @media (max-width: 720px) { .msg { grid-template-columns: 1fr; gap: 2px; } }
   .empty { color: var(--ink-3); font-size: 13px; padding: 8px 0; }
+  /* queue tab */
+  .qtask { padding: 14px 0; border-top: 1px solid var(--line); display: grid; gap: 10px; }
+  .qtask:first-child { border-top: 0; }
+  .qhead { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 2fr) auto; gap: 16px; align-items: center; }
+  .qhead .ttl { font-weight: 600; font-size: 14px; overflow-wrap: anywhere; }
+  .qhead .tid { font-size: 11.5px; color: var(--ink-3); display: flex; gap: 8px; flex-wrap: wrap; }
+  .qhead .side { text-align: right; font-size: 12px; color: var(--ink-3); white-space: nowrap; display: grid; gap: 2px; }
+  .qfiles { display: flex; gap: 6px; flex-wrap: wrap; }
+  .qfiles button, .ask button { font: 500 12px Geist, system-ui, sans-serif; border: 1px solid var(--line-2); background: var(--panel); color: var(--ink);
+    border-radius: 8px; padding: 4px 10px; cursor: pointer; }
+  .qfiles button:hover, .ask button:hover { background: var(--sunk); }
+  .ask { border: 1px solid var(--warning); border-radius: 10px; padding: 10px 12px; display: grid; gap: 8px; background: color-mix(in srgb, var(--warning) 8%, var(--panel)); }
+  .ask .q { font-size: 13.5px; overflow-wrap: anywhere; }
+  .ask .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .ask input { flex: 1 1 180px; min-width: 0; font: 13px Geist, system-ui, sans-serif; padding: 5px 8px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--panel); color: var(--ink); }
+  .ask button.yes { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+  .ask .msg { font-size: 12px; color: var(--ink-2); }
+  .answered { font-size: 12.5px; color: var(--ink-2); }
+  .qsplit { font-size: 12px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: .04em; margin: 18px 0 2px; }
+  @media (max-width: 760px) { .qhead { grid-template-columns: 1fr; gap: 8px; } .qhead .side { text-align: left; } }
+  dialog.file { width: min(760px, calc(100vw - 32px)); max-height: 80vh; border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); color: var(--ink); padding: 0; box-shadow: var(--shadow); }
+  dialog.file::backdrop { background: rgb(0 0 0 / .35); }
+  dialog.file header { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); font-weight: 600; }
+  dialog.file header button { margin-left: auto; border: 0; background: none; color: var(--ink-2); font-size: 18px; cursor: pointer; }
+  dialog.file pre { margin: 0; padding: 14px 16px; white-space: pre-wrap; overflow-wrap: anywhere; font: 12.5px/1.5 'Geist Mono', ui-monospace, monospace; max-height: calc(80vh - 52px); overflow: auto; }
+  /* tokens tab */
+  .tok { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.6fr) auto; gap: 16px; align-items: center; padding: 12px 0; border-top: 1px solid var(--line); }
+  .tok:first-child { border-top: 0; }
+  .tok .nm { font-weight: 600; font-size: 14px; overflow-wrap: anywhere; display: flex; gap: 8px; align-items: center; }
+  .tok .sub { font-size: 12px; color: var(--ink-3); }
+  .tok .nums { text-align: right; font-size: 12.5px; white-space: nowrap; }
+  .tok .nums b { font-size: 15px; font-weight: 500; }
+  .ctx { display: grid; gap: 4px; }
+  .ctx .track { height: 8px; border-radius: 4px; background: var(--sunk); border: 1px solid var(--line); overflow: hidden; position: relative; }
+  .ctx .fill { height: 100%; background: var(--ink-3); }
+  .ctx.amber .fill { background: var(--warning); } .ctx.red .fill { background: var(--critical); }
+  .ctx .mark { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line-2); }
+  .ctx .cap { font-size: 11.5px; color: var(--ink-3); display: flex; justify-content: space-between; gap: 8px; }
+  .ctx.amber .cap b, .ctx.red .cap b { color: var(--ink); }
+  .subs { grid-column: 1 / -1; display: grid; gap: 2px; padding-left: 14px; border-left: 2px solid var(--line); }
+  .subs div { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; color: var(--ink-2); }
+  .ctxpill { font: 500 11px 'Geist Mono', monospace; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink-2); }
+  .ctxpill.amber { border-color: var(--warning); color: var(--ink); } .ctxpill.red { border-color: var(--critical); color: var(--critical); }
+  @media (max-width: 760px) { .tok { grid-template-columns: 1fr; gap: 8px; } .tok .nums { text-align: left; } }
   .howto { font-size: 13px; color: var(--ink-2); display: grid; gap: 4px; }
   .howto code { font-family: 'Geist Mono', monospace; font-size: 12px; background: var(--sunk); border: 1px solid var(--line); padding: 0 5px; border-radius: 5px; }
 
@@ -204,6 +248,8 @@
     <span class="livepill" id="pill"><span class="beat"></span><span id="pilltxt">Connecting</span></span>
     <div class="tabs" role="tablist">
       <button role="tab" id="tab-pipeline" aria-selected="true">Pipeline</button>
+      <button role="tab" id="tab-queue" aria-selected="false">Queue <span class="badge" id="askcount" hidden>0</span></button>
+      <button role="tab" id="tab-tokens" aria-selected="false">Tokens</button>
       <button role="tab" id="tab-messages" aria-selected="false">Messages <span class="badge" id="newcount" hidden>0</span></button>
     </div>
     <span class="spacer"></span>
@@ -215,24 +261,37 @@
   <section class="kpis" id="kpis">
     <div class="kpi"><div class="num">-</div><div class="lbl">Agents live</div></div>
     <div class="kpi"><div class="num">-</div><div class="lbl">Working now</div></div>
-    <div class="kpi"><div class="num">-</div><div class="lbl">Pipeline tasks open</div></div>
-    <div class="kpi"><div class="num">-</div><div class="lbl">Planners running</div></div>
+    <div class="kpi"><div class="num">-</div><div class="lbl">Queue tasks open</div></div>
+    <div class="kpi"><div class="num">-</div><div class="lbl">Analysts running</div></div>
   </section>
 
   <div id="view-pipeline">
     <section class="card">
       <div class="sechead"><h2>How work flows</h2><p>Last 24 hours. A dot travels each time work is handed over.</p></div>
-      <svg id="flow" role="img" aria-label="Pipeline diagram: you, intake, dispatcher, planners, web worker"></svg>
+      <svg id="flow" role="img" aria-label="Pipeline diagram: you, queue, analysts, browser agent"></svg>
       <div class="howto" id="howto" hidden></div>
-    </section>
-
-    <section class="card">
-      <div class="sechead"><h2>Pipeline tasks</h2><p>From Intake to the web worker and back</p></div>
-      <div class="board" id="board"><div class="empty">Loading</div></div>
     </section>
 
     <section class="agents" id="agents">
       <div class="skel" style="height:420px"></div><div class="skel" style="height:420px"></div>
+    </section>
+  </div>
+
+  <div id="view-queue" hidden>
+    <section class="card">
+      <div class="sechead"><h2>Task queue</h2><p>Every task from the queue tab: open first, then closed in the last 24 hours. Answer approvals here or in chat; the first answer wins.</p></div>
+      <div class="board" id="board"><div class="empty">Loading</div></div>
+    </section>
+  </div>
+
+  <div id="view-tokens" hidden>
+    <section class="card">
+      <div class="sechead"><h2>Context per session</h2><p>What each session re-sends on every turn. Over 200k is amber, over 400k red: safe to /clear, state is in the queue.</p></div>
+      <div id="toksessions"><div class="empty">Loading</div></div>
+    </section>
+    <section class="card">
+      <div class="sechead"><h2>Tokens per queue task</h2><p>Analysts and browser workers whose description ends with the task id. Input-equivalent: cache write ×1.25, cache read ×0.1, output ×5.</p></div>
+      <div id="toktasks"><div class="empty">Loading</div></div>
     </section>
   </div>
 
@@ -243,6 +302,7 @@
     </section>
   </div>
 </main>
+<dialog class="file" id="filedlg"><header><span id="filettl"></span><button id="fileclose" aria-label="Close">&times;</button></header><pre id="filebody"></pre></dialog>
 
 <script>
 const $ = id => document.getElementById(id);
@@ -261,14 +321,17 @@ const dur = ms => {
 const colorOf = s => s && s.slot !== undefined ? `var(--s${s.slot})` : 'var(--ink-3)';
 
 const ROLE = {
-  intake: { label: 'Intake', blurb: 'Takes down what you want and reports back', start: '/intake' },
-  dispatcher: { label: 'Dispatcher', blurb: 'Sizes each task, runs planners, checks the plan', start: '/dispatcher' },
-  'web-worker': { label: 'Web worker', blurb: 'Does the work in the logged-in browser', start: '/browser-agent' },
+  queue: { label: 'Queue', blurb: 'Takes your tasks, runs analysts, gets your OK', start: '/queue' },
+  'web-worker': { label: 'Browser agent', blurb: 'Does each work order in the logged-in browser', start: '/browser-agent' },
 };
-const ORDER = ['intake', 'dispatcher', 'web-worker'];
-const STEPS = [['taken', 'Taken'], ['dispatched', 'Sized'], ['planning', 'Planning'], ['reviewed', 'Reviewed'], ['with-worker', 'Web worker'], ['worker-done', 'Done'], ['reported', 'Reported']];
+const ORDER = ['queue', 'web-worker'];
+const STEPS = [['queued', 'Queued'], ['analysing', 'Analysing'], ['awaiting-approval', 'Your OK'], ['ready', 'Ready'], ['with-browser', 'Browser'], ['browser-done', 'Checked'], ['done', 'Done']];
+const CLOSED = new Set(['done', 'cancelled', 'failed', 'reported']);
+const TOKEN = document.querySelector('meta[name="dash-token"]')?.content || '';
+const kfmt = n => n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? Math.round(n / 1e3) + 'k' : String(n);
+const ctxLevel = n => n > 400e3 ? 'red' : n > 200e3 ? 'amber' : '';
 
-let data = null, byName = {}, layout = null, flowSig = '';
+let data = null, byName = {}, layout = null, flowSig = '', qtasks = null, tokens = null;
 const seen = new Set(), spawnDone = new Set();
 const openTasks = new Set();
 const boxHtml = {};
@@ -276,11 +339,13 @@ let tab = 'pipeline', unread = 0, lastMsgTs = '';
 
 try { $('closed').checked = localStorage.getItem('am-closed') === '1'; tab = localStorage.getItem('am-tab') || 'pipeline'; } catch {}
 $('closed').onchange = () => { try { localStorage.setItem('am-closed', $('closed').checked ? '1' : '0'); } catch {} flowSig = ''; render(); };
-for (const t of ['pipeline', 'messages']) $('tab-' + t).onclick = () => setTab(t);
+const TABS = ['pipeline', 'queue', 'tokens', 'messages'];
+for (const t of TABS) $('tab-' + t).onclick = () => setTab(t);
 function setTab(t) {
   tab = t;
   try { localStorage.setItem('am-tab', t); } catch {}
-  for (const x of ['pipeline', 'messages']) { $('tab-' + x).setAttribute('aria-selected', x === t); $('view-' + x).hidden = x !== t; }
+  if (!TABS.includes(t)) t = tab = 'pipeline';
+  for (const x of TABS) { $('tab-' + x).setAttribute('aria-selected', x === t); $('view-' + x).hidden = x !== t; }
   if (t === 'messages') { unread = 0; $('newcount').hidden = true; }
   flowSig = ''; render();
 }
@@ -304,12 +369,12 @@ function visible() {
   for (const l of links) for (const n of [l.from, l.to]) {
     if (n !== 'you' && !names.has(n)) { names.add(n); sessions.push({ ...(byName[n] || { name: n, live: false, status: 'closed', tasks: [], events: [], activity: [], spawns: [] }), ghost: true }); }
   }
-  // Planners and reviewers the dispatcher started: running ones, plus those that finished in the last 15 min.
-  const disp = data.roles.dispatcher && byName[data.roles.dispatcher]?.live ? byName[data.roles.dispatcher] : null;
+  // Analysts the queue started: running ones, plus those that finished in the last 15 min.
+  const disp = data.roles.queue && byName[data.roles.queue]?.live ? byName[data.roles.queue] : null;
   const helpers = disp ? disp.spawns.filter(sp => !sp.end || data.now - Date.parse(sp.end) < 15 * 60e3).slice(-5) : [];
   for (const h of helpers) {
     links.push({ from: disp.name, to: 'sp:' + h.id, count: 1, last: h.start, label: h.name, helper: true });
-    if (h.end) links.push({ from: 'sp:' + h.id, to: disp.name, count: 1, last: h.end, label: 'plan back', helper: true });
+    if (h.end) links.push({ from: 'sp:' + h.id, to: disp.name, count: 1, last: h.end, label: 'work order back', helper: true });
   }
   const pipelineMode = ORDER.some(r => data.roles[r] && byName[data.roles[r]]?.live);
   return { sessions, links, helpers, disp, pipelineMode };
@@ -333,15 +398,15 @@ function computeLayout(v) {
       return { W, H: 372, narrow, nodes, heads };
     }
   }
-  const stages = [['you'], ...ORDER.slice(0, 2).map(r => [roleSession(r)?.name || 'role:' + r]),
-    v.helpers.length ? v.helpers.map(h => 'sp:' + h.id) : ['role:planners'], [roleSession('web-worker')?.name || 'role:web-worker']];
-  const titles = ['', 'Intake', 'Dispatcher', 'Planners', 'Web worker'];
+  const stages = [['you'], [roleSession('queue')?.name || 'role:queue'],
+    v.helpers.length ? v.helpers.map(h => 'sp:' + h.id) : ['role:analysts'], [roleSession('web-worker')?.name || 'role:web-worker']];
+  const titles = ['', 'Queue', 'Analysts', 'Browser agent'];
   if (!v.pipelineMode) stages.splice(1, stages.length, ...v.sessions.map(s => [s.name]));
   if (!narrow) {
-    const fx = [.07, .26, .46, .67, .89], w = Math.min(205, W * .155);
+    const fx = [.08, .34, .62, .89], w = Math.min(215, W * .19);
     const mid = 136, gap = 62, maxStack = Math.max(...stages.map(s => s.length));
     stages.forEach((keys, c) => keys.forEach((k, i) => {
-      const helper = k.startsWith('sp:') || k === 'role:planners';
+      const helper = k.startsWith('sp:') || k === 'role:analysts';
       nodes[k] = { x: W * fx[c], y: mid + (i - (keys.length - 1) / 2) * gap, w: k === 'you' ? Math.min(140, w) : helper ? w - 20 : w, h: helper ? 50 : 70, col: c };
     }));
     stages.forEach((keys, c) => titles[c] && heads.push({ x: W * fx[c], y: 18, text: titles[c].toUpperCase() }));
@@ -359,7 +424,7 @@ function computeLayout(v) {
   const w = Math.min(250, W * .6);
   let y = 36, row = 0;
   for (const keys of stages) for (const k of keys) {
-    const helper = k.startsWith('sp:') || k === 'role:planners';
+    const helper = k.startsWith('sp:') || k === 'role:analysts';
     nodes[k] = { x: W / 2, y, w: k === 'you' ? 140 : helper ? w - 30 : w, h: helper ? 48 : 68, col: row++ };
     y += helper ? 70 : 92;
   }
@@ -445,7 +510,7 @@ function nodeContent(name, v) {
     const n = v.links.filter(l => l.from === 'you').reduce((a, l) => a + l.count, 0);
     return ['node you', `<div class="n1"><i class="ph ph-user"></i><b>You</b></div><div class="n2">${n} ${n === 1 ? 'prompt' : 'prompts'} in 24 h</div>`];
   }
-  if (name === 'role:planners') return ['node helper missing', `<div class="n1"><i class="ph ph-lightbulb"></i><b>No planners running</b></div><div class="n2">Dispatcher starts 0-3 per task</div>`];
+  if (name === 'role:analysts') return ['node helper missing', `<div class="n1"><i class="ph ph-lightbulb"></i><b>No analysts running</b></div><div class="n2">Queue runs up to 3 at once</div>`];
   if (name.startsWith('role:')) {
     const r = ROLE[name.slice(5)];
     return ['node missing', `<div class="n1"><b>${r.label}</b></div><div class="n2">Not started: run ${r.start} in a tab</div>`];
@@ -546,33 +611,113 @@ function intro(v) {
     .forEach((l, i) => setTimeout(() => launch(l.from + '>' + l.to, linkColor(l)), 400 + i * 350));
 }
 
-/* ---------- pipeline task board ---------- */
+/* ---------- queue tab: tasks, stages and approvals ---------- */
+const answering = {}; // task id -> message shown under its buttons
+function stepsHtml(t) {
+  const idx = STEPS.findIndex(([k]) => k === t.stage), reached = new Set(t.stages.map(x => x.stage));
+  const done = t.stage === 'done';
+  const steps = STEPS.map(([k, label], i) => {
+    let cls = reached.has(k) || (idx >= 0 && i < idx) ? 'done' : '';
+    if (i === idx && !done) cls = k === 'awaiting-approval' ? 'wait' : 'cur';
+    if (done && k === 'done') cls = 'done';
+    return `<div class="st ${cls}" title="${esc(label)}">${esc(label)}</div>`;
+  });
+  if (['blocked', 'failed', 'cancelled'].includes(t.stage)) steps[Math.min(6, Math.max(0, STEPS.findIndex(([k]) => !reached.has(k))))] = `<div class="st stop">${esc(t.stage[0].toUpperCase() + t.stage.slice(1))}</div>`;
+  if (idx < 0 && !['blocked', 'failed', 'cancelled'].includes(t.stage)) return `<div class="chips"><span class="chip">${esc(t.stage || '?')}</span></div>`; // old pipeline stages
+  return `<div class="steps">${steps.join('')}</div>`;
+}
+function qtaskHtml(t) {
+  const tk = tokens?.tasks.find(x => x.id === t.id);
+  const since = t.stages[t.stages.length - 1]?.ts || t.last;
+  const files = Object.keys(t.files || {}).map(f => `<button data-file="${esc(f)}" data-id="${esc(t.id)}">${f === 'workorder' ? 'Work order' : f[0].toUpperCase() + f.slice(1)}</button>`).join('');
+  let ask = '';
+  if (t.answer) ask = `<div class="answered"><i class="ph ph-check-circle"></i> Answered ${t.answer.by === 'dashboard' ? 'on the dashboard' : 'in chat'} at ${hhmm(t.answer.ts)}: <b>${esc(t.answer.value)}</b></div>`;
+  else if (t.stage === 'awaiting-approval') ask = `<div class="ask" data-ask="${esc(t.id)}">
+      <div class="q">${esc(t.question || 'The queue needs your answer.')}</div>
+      <div class="row"><button class="yes" data-answer="approve">Approve</button><button data-answer="reject">Reject</button>
+        <input type="text" placeholder="Or type an answer (an option, or new instructions)" aria-label="Answer for ${esc(t.id)}"><button data-answer="text">Send</button></div>
+      ${answering[t.id] ? `<div class="msg">${esc(answering[t.id])}</div>` : ''}</div>`;
+  return `<div class="qtask" data-q="${esc(t.id)}">
+    <div class="qhead">
+      <div><div class="ttl">${esc(t.title || t.id)}</div><div class="tid"><span class="mono">${esc(t.id)}</span>${t.agent ? `<span>${esc(t.agent)}</span>` : ''}</div></div>
+      ${stepsHtml(t)}
+      <div class="side"><time>${CLOSED.has(t.stage) ? 'closed ' + hhmm(since) : 'waiting ' + dur(Date.now() - Date.parse(since))}</time>${tk ? `<span>${kfmt(tk.inputEq)} tokens</span>` : ''}</div>
+    </div>
+    ${files ? `<div class="qfiles">${files}</div>` : ''}${ask}
+  </div>`;
+}
 function renderBoard() {
-  const tasks = data.pipeline;
-  let html;
-  if (!tasks.length) {
-    html = `<div class="empty">No pipeline tasks yet. Give the Intake tab a task to start one.</div>`;
-  } else html = tasks.map(t => {
-    const last = t.stages[t.stages.length - 1], idx = STEPS.findIndex(([k]) => k === last.stage);
-    const reached = new Set(t.stages.map(s => s.stage));
-    const finished = last.stage === 'reported';
-    const steps = STEPS.map(([k, label], i) => {
-      let cls = reached.has(k) || i < idx ? 'done' : '';
-      if (i === idx && !finished) cls = 'cur';
-      if (finished && k === 'reported') cls = 'done';
-      const lab = k === 'planning' && t.planners !== null ? `${label} (${t.planners})` : label;
-      return `<div class="st ${cls}" title="${esc(lab)}">${esc(lab)}</div>`;
-    });
-    if (last.stage === 'question') steps[Math.max(0, STEPS.findIndex(([k]) => !reached.has(k)) )] = `<div class="st wait">Waiting on you</div>`;
-    if (last.stage === 'blocked') steps[4] = `<div class="st stop">Blocked</div>`;
-    const note = [...t.stages].reverse().find(s => s.note)?.note || '';
-    return `<div class="ptask">
-      <div><div class="ttl">${esc(t.title || t.id)}</div><div class="tid mono">${esc(t.id)}</div>${note ? `<div class="note">${esc(note)}</div>` : ''}</div>
-      <div class="steps">${steps.join('')}</div>
-      <time>${finished ? 'took ' + dur(Date.parse(last.ts) - Date.parse(t.stages[0].ts)) : 'running ' + dur(data.now - Date.parse(t.stages[0].ts))}</time>
-    </div>`;
-  }).join('');
-  if ($('board').dataset.h !== html) { $('board').innerHTML = html; $('board').dataset.h = html; }
+  if (!qtasks) return;
+  const dayAgo = Date.now() - 24 * 3600e3;
+  const open = qtasks.filter(t => !CLOSED.has(t.stage));
+  const closed = qtasks.filter(t => CLOSED.has(t.stage) && Date.parse(t.last) >= dayAgo).slice(0, 20);
+  const asks = open.filter(t => t.stage === 'awaiting-approval' && !t.answer).length;
+  $('askcount').textContent = asks; $('askcount').hidden = !asks;
+  if (tab !== 'queue') return;
+  const board = $('board');
+  if (board.contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return; // don't wipe a half-typed answer
+  const html = (open.length || closed.length)
+    ? open.map(qtaskHtml).join('') + (closed.length ? `<div class="qsplit">Closed, last 24 hours</div>` + closed.map(qtaskHtml).join('') : '')
+    : `<div class="empty">No queued tasks yet. Run <code>/queue</code> in a tab and give it a task.</div>`;
+  if (board.dataset.h !== html) { board.innerHTML = html; board.dataset.h = html; }
+}
+$('board').addEventListener('click', async e => {
+  const f = e.target.closest('[data-file]');
+  if (f) return openFile(f.dataset.id, f.dataset.file);
+  const b = e.target.closest('[data-answer]');
+  if (!b) return;
+  const box = b.closest('[data-ask]'), id = box.dataset.ask;
+  const value = b.dataset.answer === 'text' ? box.querySelector('input').value.trim() : b.dataset.answer;
+  if (!value) return;
+  box.querySelectorAll('button').forEach(x => x.disabled = true);
+  try {
+    const r = await fetch(`/api/tasks/${encodeURIComponent(id)}/answer`, { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ value, token: TOKEN }) });
+    const j = await r.json().catch(() => ({ ok: false, message: 'HTTP ' + r.status }));
+    answering[id] = j.ok ? 'Sent. The queue agent picks it up now.' : j.message;
+  } catch (err) { answering[id] = 'Could not reach the dashboard server.'; }
+  document.activeElement?.blur();
+  await loadTasks();
+});
+async function openFile(id, name) {
+  $('filettl').textContent = `${id}: ${name === 'workorder' ? 'work order' : name}`;
+  $('filebody').textContent = 'Loading';
+  $('filedlg').showModal();
+  try { const r = await fetch(`/api/tasks/${encodeURIComponent(id)}/file/${name}`); $('filebody').textContent = r.ok ? await r.text() : 'Not found.'; }
+  catch { $('filebody').textContent = 'Could not load it.'; }
+}
+$('fileclose').onclick = () => $('filedlg').close();
+
+/* ---------- tokens tab ---------- */
+function ctxPill(id) {
+  const t = tokens?.sessions.find(x => x.id === id);
+  if (!t || !t.context) return '';
+  const lv = ctxLevel(t.context);
+  return `<span class="ctxpill ${lv}" title="Context re-sent every turn${lv ? ': safe to /clear, state is in the queue' : ''}">${kfmt(t.context)} ctx</span>`;
+}
+function ctxBar(n) {
+  const lv = ctxLevel(n), pct = Math.min(100, n / 1e6 * 100);
+  return `<div class="ctx ${lv}"><div class="track"><div class="fill" style="width:${pct}%"></div><span class="mark" style="left:20%"></span><span class="mark" style="left:40%"></span></div>
+    <div class="cap"><span><b>${kfmt(n)}</b> context</span><span>${lv ? 'safe to /clear: state is in the queue' : 'ok'}</span></div></div>`;
+}
+function renderTokens() {
+  if (!tokens || tab !== 'tokens') return;
+  const showClosed = $('closed').checked;
+  const list = tokens.sessions.filter(s => s.live || showClosed);
+  const html = list.length ? list.map(s => `<div class="tok">
+      <div><div class="nm">${s.live ? '<i class="ph-fill ph-circle" style="color:var(--good);font-size:9px"></i>' : ''}${esc(s.name)}</div>
+        <div class="sub">${s.turns} turns, last ${hhmm(s.lastTs)}${s.subagents.length ? `, ${s.subagents.length} subagents` : ''}</div></div>
+      ${ctxBar(s.context)}
+      <div class="nums"><b>${kfmt(s.inputEq + s.subagentsEq)}</b> tokens<div class="sub">${kfmt(s.inputEq)} main${s.subagentsEq ? ` + ${kfmt(s.subagentsEq)} subagents` : ''}</div></div>
+      ${s.subagents.length ? `<div class="subs">${s.subagents.slice(0, 8).map(a => `<div><span>${esc(a.description || a.id)}</span><span class="mono">${kfmt(a.inputEq)}, ${a.turns} turns</span></div>`).join('')}</div>` : ''}
+    </div>`).join('') : '<div class="empty">No sessions in the last 24 hours. Tick "Closed sessions" to see closed ones.</div>';
+  if ($('toksessions').dataset.h !== html) { $('toksessions').innerHTML = html; $('toksessions').dataset.h = html; }
+  const th = tokens.tasks.length ? tokens.tasks.sort((a, b) => b.inputEq - a.inputEq).map(t => `<div class="tok">
+      <div><div class="nm mono">${esc(t.id)}</div><div class="sub">${esc(qtasks?.find(x => x.id === t.id)?.title || '')}</div></div>
+      <div class="sub">${t.agents.map(esc).join(', ')}</div>
+      <div class="nums"><b>${kfmt(t.inputEq)}</b> tokens</div></div>`).join('')
+    : '<div class="empty">No analyst or browser-worker runs yet.</div>';
+  if ($('toktasks').dataset.h !== th) { $('toktasks').innerHTML = th; $('toktasks').dataset.h = th; }
 }
 
 /* ---------- agent boxes ---------- */
@@ -612,7 +757,7 @@ function agentHtml(s) {
       <div class="m"><span>finished ${hhmm(cur.end)}</span></div></div>`;
   } else nowBox = `<div class="now idle"><div class="t">No tasks in the recent transcript.</div></div>`;
   const recentSpawns = (s.spawns || []).filter(sp => !sp.end || now - Date.parse(sp.end) < 60 * 60e3).slice(-6).reverse();
-  const helpers = recentSpawns.length ? `<div class="helpers"><div class="k">${r === 'dispatcher' ? 'Planners and reviewers' : 'Helper agents'}, last hour</div>
+  const helpers = recentSpawns.length ? `<div class="helpers"><div class="k">${r === 'queue' ? 'Analysts' : 'Helper agents'}, last hour</div>
     ${recentSpawns.map(sp => `<div class="helper-row"><i class="ph ${sp.end ? 'ph-check-circle' : 'ph-circle-notch spin run'}"></i><span>${esc(sp.name)}</span>
       <span class="d">${sp.end ? 'took ' + dur(Date.parse(sp.end) - Date.parse(sp.start)) : 'running ' + dur(now - Date.parse(sp.start))}</span></div>`).join('')}</div>` : '';
   const max = Math.max(1, ...s.activity);
@@ -621,7 +766,7 @@ function agentHtml(s) {
   const tasks = s.tasks.slice().reverse(), shown = tasks.slice(0, 10);
   return `<article class="agent ${esc(s.status)}" style="--c:${colorOf(s)}">
     <div class="bar"></div>
-    <div class="ahead"><span class="sw"></span><h3>${esc(r ? ROLE[r].label : s.name)}</h3>${r ? `<span class="sn">${esc(s.name)}</span>` : ''}${state}</div>
+    <div class="ahead"><span class="sw"></span><h3>${esc(r ? ROLE[r].label : s.name)}</h3>${r ? `<span class="sn">${esc(s.name)}</span>` : ''}${ctxPill(s.id)}${state}</div>
     <div class="asub"><span>${esc(r ? ROLE[r].blurb : (s.title || 'No pipeline role'))}</span>${s.pid ? `<span>pid <span class="mono">${s.pid}</span></span>` : ''}</div>
     ${nowBox}${helpers}
     <div class="spark" aria-label="Activity over the last 3 hours">${bars}</div>
@@ -665,13 +810,13 @@ function messages() {
         const line = e.first || e.text;
         const m = /^(PIPELINE|BROWSER)\s+([A-Z]+)\s+(.*)$/.exec(line);
         out.push({ ts: e.ts, from: s.name, to: e.peer, kind: m ? m[2] : '', text: m ? m[3] : line });
-      } else if (e.kind === 'prompt' && roleOf(s.name) === 'intake') {
+      } else if (e.kind === 'prompt' && roleOf(s.name) === 'queue') {
         out.push({ ts: e.ts, from: 'you', to: s.name, kind: 'ASK', text: e.text });
       } else if (e.kind === 'spawn') {
         out.push({ ts: e.ts, from: s.name, to: 'sp:' + e.text, kind: 'START', text: (e.model ? e.model + ': ' : '') + (e.prompt || '').slice(0, 120) });
       }
     }
-    for (const sp of s.spawns || []) if (sp.end && Date.parse(sp.end) >= dayAgo) out.push({ ts: sp.end, from: 'sp:' + sp.name, to: s.name, kind: 'DONE', text: 'Plan returned' });
+    for (const sp of s.spawns || []) if (sp.end && Date.parse(sp.end) >= dayAgo) out.push({ ts: sp.end, from: 'sp:' + sp.name, to: s.name, kind: 'DONE', text: 'Finished' });
   }
   return out.sort((a, b) => b.ts.localeCompare(a.ts)).slice(0, 80);
 }
@@ -693,7 +838,7 @@ function renderMsgs() {
 
 function renderKpis(v) {
   const live = data.sessions.filter(s => s.live);
-  const open = data.pipeline.filter(t => t.stages[t.stages.length - 1].stage !== 'reported').length;
+  const open = (qtasks || []).filter(t => !CLOSED.has(t.stage)).length;
   const planners = v.helpers.filter(h => !h.end).length;
   [live.length, live.filter(s => s.status === 'busy').length, open, planners]
     .forEach((n, i) => { $('kpis').children[i].querySelector('.num').textContent = n; });
@@ -714,10 +859,11 @@ function render() {
       v.links.map(l => l.from + '>' + l.to).join('|')].join('#');
     if (sig !== flowSig) { buildFlow(v); flowSig = sig; }
     updateFlow(v);
-    renderBoard();
     renderAgents(v);
     renderHowto(v);
   }
+  renderBoard();
+  renderTokens();
   renderMsgs();
   renderKpis(v);
 }
@@ -740,10 +886,39 @@ async function poll() {
     $('pill').classList.add('stale');
     $('pilltxt').textContent = 'Monitor server not reachable, retrying';
   }
-  setTimeout(poll, document.hidden ? 6000 : 2000);
+  clearTimeout(pollTimer);
+  pollTimer = setTimeout(poll, document.hidden ? 20000 : 10000); // fallback; the stream triggers updates sooner
+}
+let pollTimer;
+async function loadTasks() {
+  try { const r = await fetch('/api/tasks', { cache: 'no-store' }); if (r.ok) { qtasks = await r.json(); render(); } } catch {}
+}
+async function loadTokens() {
+  try { const r = await fetch('/api/tokens', { cache: 'no-store' }); if (r.ok) { tokens = await r.json(); boxReset(); render(); } } catch {}
+}
+const boxReset = () => { for (const k in boxHtml) delete boxHtml[k]; };
+const soon = {};
+const debounce = (key, ms, fn) => { clearTimeout(soon[key]); soon[key] = setTimeout(fn, ms); };
+function connectStream() {
+  const es = new EventSource('/api/stream');
+  es.onmessage = e => {
+    let m; try { m = JSON.parse(e.data); } catch { return; }
+    if (m.type === 'task_updated') debounce('tasks', 200, loadTasks);
+    if (m.type === 'new_event') {
+      debounce('poll', 500, poll);
+      debounce('tasks', 1500, loadTasks); // queue changes are written by pipeline.py, seen right after the agent's tool call
+      debounce('tokens', 5000, loadTokens);
+    }
+  };
+  es.onerror = () => { /* EventSource reconnects by itself; polling covers the gap */ };
 }
 addEventListener('resize', () => { clearTimeout(window._rs); window._rs = setTimeout(() => { flowSig = ''; render(); }, 150); });
 poll();
+loadTasks();
+loadTokens();
+setInterval(loadTasks, 10000);
+setInterval(loadTokens, 30000);
+connectStream();
 </script>
 </body>
 </html>
