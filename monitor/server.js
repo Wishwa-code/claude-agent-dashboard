@@ -16,6 +16,7 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const os = require('os');
+const crypto = require('crypto');
 
 const PORT = Number(process.env.PORT || 4020);
 const PROJECT_DIR = path.resolve(process.env.PROJECT_DIR || path.join(os.homedir(), 'Desktop/shopify-shop-demo'));
@@ -25,7 +26,6 @@ const STATE = process.env.PIPELINE_STATE || path.join(os.homedir(), '.local/stat
 const BROWSER_AGENT_FILE = path.join(STATE, 'browser-agent');
 const ROLES = ['queue', 'web-worker', 'intake', 'dispatcher']; // registered by claude/scripts/pipeline/pipeline.py
 const DB_FILE = process.env.DASHBOARD_DB || path.join(os.homedir(), '.local/state/claude-dashboard/dashboard.sqlite');
-const LEDGER = path.join(STATE, 'pipeline.jsonl');
 const FIRST_READ = 24 * 1024 * 1024; // only the tail of a transcript is read on first sight (they reach 85 MB)
 const MAX_EVENTS = 300;
 const MAX_TASKS = 80;
@@ -37,11 +37,14 @@ const knownSocks = {}; // "uds:<socket>" -> session name, learnt from received m
 const sentText = {}; // first 120 chars of a received message -> sender name (names closed sessions from their sends)
 const colorSlot = {}; // session id -> categorical slot, fixed once given so a colour follows its session
 let nextSlot = 0;
+const sessionNames = {}; // session id -> last name the snapshot found, for the tokens view
 
 const { clip, taskName, humanise, toolSummary, toolLabel, toEvents } = require('./lib/transcript');
 const { openDb } = require('./lib/db');
 const { handleHook } = require('./lib/hooks');
 const { createStream } = require('./lib/sse');
+const { readTasks, taskFile, answerTask } = require('./lib/pipeline');
+const { sessionUsage, inputEq, total, WEIGHTS } = require('./lib/usage');
 
 function newTask(c, e, name, from) {
   const t = { id: e.id, name, from, prompt: e.text, start: e.ts, end: e.ts, steps: 0, tools: {}, step: null,
@@ -129,17 +132,7 @@ function readTranscript(file) {
 
 // Pipeline tasks from the ledger written by claude/scripts/pipeline/pipeline.py, newest first.
 function readLedger(cutoff) {
-  let rows = [];
-  try { rows = fs.readFileSync(LEDGER, 'utf8').split('\n').filter(Boolean).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean); } catch {}
-  const tasks = {};
-  for (const r of rows) {
-    const t = tasks[r.id] || (tasks[r.id] = { id: r.id, title: '', planners: null, stages: [] });
-    if (r.title) t.title = r.title;
-    if (r.planners !== undefined) t.planners = r.planners;
-    t.stages.push({ ts: r.ts, stage: r.stage, by: r.by, note: r.note || '' });
-  }
-  return Object.values(tasks).filter(t => Date.parse(t.stages[t.stages.length - 1].ts) >= cutoff)
-    .sort((a, b) => b.stages[b.stages.length - 1].ts.localeCompare(a.stages[a.stages.length - 1].ts));
+  return readTasks(STATE).filter(t => t.stages.length && Date.parse(t.last) >= cutoff);
 }
 
 function alive(pid) {
@@ -168,7 +161,9 @@ function snapshot() {
   const byId = new Map(live.map(s => [s.sessionId, s]));
   const found = [];
   const cutoff = Date.now() - RECENT_HOURS * 3600e3;
-  for (const f of fs.readdirSync(TRANSCRIPTS)) {
+  let files = [];
+  try { files = fs.readdirSync(TRANSCRIPTS); } catch { /* no transcripts yet */ }
+  for (const f of files) {
     if (!f.endsWith('.jsonl')) continue;
     const id = f.slice(0, -6);
     const s = byId.get(id);
@@ -185,6 +180,7 @@ function snapshot() {
   for (const f of found) {
     const names = new Set(f.t.sends.map(e => sentText[e.text.slice(0, 120)]).filter(Boolean));
     f.name = f.s?.name || [...names].pop() || '(closed) ' + f.id.slice(0, 8);
+    sessionNames[f.id] = f.name;
     for (const n of names) alias[n] = f.name;
   }
   const peerName = p => {
@@ -228,9 +224,47 @@ function snapshot() {
   return { now: Date.now(), browserAgent, roles, pipeline: readLedger(cutoff), bucketMin: BUCKET_MIN, sessions, links: Object.values(links) };
 }
 
+// Tokens per session (main transcript) and per subagent, plus per queue task: the sum over subagents whose
+// description ends with the task id ("Analyst Q-003", "Browser worker Q-003").
+function tokensView() {
+  const live = liveSessions();
+  const byId = new Map(live.map(s => [s.sessionId, s]));
+  const cutoff = Date.now() - RECENT_HOURS * 3600e3;
+  const ids = new Set();
+  let files = [];
+  try { files = fs.readdirSync(TRANSCRIPTS); } catch { /* no transcripts yet */ }
+  for (const f of files) {
+    if (!f.endsWith('.jsonl')) continue;
+    const id = f.slice(0, -6);
+    if (byId.has(id) || fs.statSync(path.join(TRANSCRIPTS, f)).mtimeMs >= cutoff) ids.add(id);
+  }
+  const usage = sessionUsage(TRANSCRIPTS, ids);
+  const tasks = {};
+  const sum = st => ({ inputEq: Math.round(inputEq(total(st.byModel))), turns: st.turns, context: st.context, lastTs: st.lastTs });
+  const sessions = Object.entries(usage).map(([id, u]) => {
+    const subagents = Object.entries(u.subagents).map(([aid, st]) => {
+      const row = { id: aid, description: st.description, ...sum(st) };
+      const task = /\b(Q-\d+)$/.exec(st.description || '')?.[1];
+      if (task) {
+        const t = tasks[task] || (tasks[task] = { id: task, inputEq: 0, agents: [] });
+        t.inputEq += row.inputEq;
+        t.agents.push(st.description);
+      }
+      return row;
+    }).sort((a, b) => b.inputEq - a.inputEq);
+    const s = byId.get(id);
+    return { id, name: s?.name || sessionNames[id] || '(closed) ' + id.slice(0, 8), live: !!s, ...sum(u.main),
+      byModel: u.main.byModel, subagents, subagentsEq: subagents.reduce((a, x) => a + x.inputEq, 0) };
+  }).sort((a, b) => (b.live - a.live) || (b.inputEq - a.inputEq));
+  return { now: Date.now(), weights: WEIGHTS, sessions, tasks: Object.values(tasks) };
+}
+
 const db = openDb(DB_FILE);
 const stream = createStream();
 const MAX_BODY = 1024 * 1024;
+const PAGE_TOKEN = crypto.randomBytes(16).toString('hex'); // proves an answer came from our own page
+const OK_HOSTS = new Set([`localhost:${PORT}`, `127.0.0.1:${PORT}`]);
+const OK_ORIGINS = new Set([...OK_HOSTS].map(h => 'http://' + h));
 
 function readBody(req, cb) {
   let size = 0;
@@ -243,30 +277,54 @@ function readBody(req, cb) {
   req.on('end', () => cb(Buffer.concat(chunks).toString('utf8')));
 }
 
+function sendJson(res, status, body) {
+  res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+  res.end(JSON.stringify(body));
+}
+
 http.createServer((req, res) => {
-  if (req.method === 'POST' && req.url === '/api/hooks/event') {
+  // Only our own host names: a page on another site can't reach us through DNS rebinding.
+  if (!OK_HOSTS.has(req.headers.host)) { res.writeHead(403); res.end(); return; }
+  const url = new URL(req.url, 'http://localhost');
+  const p = url.pathname;
+  let m;
+  if (req.method === 'POST' && p === '/api/hooks/event') {
     // Always answer 200 at once: a hook must never slow down or block Claude Code.
     readBody(req, body => {
       try {
-        for (const m of handleHook(db, JSON.parse(body))) stream.broadcast(m);
+        for (const msg of handleHook(db, JSON.parse(body))) stream.broadcast(msg);
       } catch (e) {
         console.error('hook event:', e.message);
       }
-      res.writeHead(200, { 'content-type': 'application/json' });
-      res.end('{}');
+      sendJson(res, 200, {});
     });
-  } else if (req.url === '/api/stream') {
+  } else if (req.method === 'POST' && (m = /^\/api\/tasks\/([^/]+)\/answer$/.exec(p))) {
+    readBody(req, async body => {
+      let j = {};
+      try { j = JSON.parse(body); } catch { /* empty or bad body: refused below */ }
+      if (!OK_ORIGINS.has(req.headers.origin) || j.token !== PAGE_TOKEN) return sendJson(res, 403, { ok: false, message: 'forbidden' });
+      const id = decodeURIComponent(m[1]);
+      const r = await answerTask(STATE, id, j.value);
+      stream.broadcast({ type: 'task_updated', data: { id }, timestamp: new Date().toISOString() });
+      sendJson(res, 200, r);
+    });
+  } else if (p === '/api/stream') {
     stream.handler(req, res);
-  } else if (req.url === '/api/sessions') {
-    try {
-      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-      res.end(JSON.stringify(snapshot()));
-    } catch (e) {
-      res.writeHead(500); res.end(String(e.stack || e));
-    }
-  } else if (req.url === '/' || req.url === '/index.html') {
-    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-    res.end(fs.readFileSync(path.join(__dirname, 'index.html')));
+  } else if (p === '/api/tasks') {
+    sendJson(res, 200, readTasks(STATE));
+  } else if ((m = /^\/api\/tasks\/([^/]+)\/file\/([^/]+)$/.exec(p))) {
+    const text = taskFile(STATE, decodeURIComponent(m[1]), decodeURIComponent(m[2]));
+    if (text === null) { res.writeHead(404); res.end(); return; }
+    res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
+    res.end(text);
+  } else if (p === '/api/tokens') {
+    try { sendJson(res, 200, tokensView()); } catch (e) { res.writeHead(500); res.end(String(e.stack || e)); }
+  } else if (p === '/api/sessions') {
+    try { sendJson(res, 200, snapshot()); } catch (e) { res.writeHead(500); res.end(String(e.stack || e)); }
+  } else if (p === '/' || p === '/index.html') {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+    res.end(fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8')
+      .replace('<head>', `<head>\n<meta name="dash-token" content="${PAGE_TOKEN}">`));
   } else {
     res.writeHead(404); res.end();
   }
