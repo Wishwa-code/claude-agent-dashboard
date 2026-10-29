@@ -1,0 +1,9 @@
+{
+  "name": "claude-agent-dashboard",
+  "private": true,
+  "description": "Local dashboard for Claude Code sessions, subagents and the Polek task queue",
+  "scripts": {
+    "start": "node monitor/server.js",
+    "test": "node --test \"monitor/test/*.test.js\""
+  }
+}
