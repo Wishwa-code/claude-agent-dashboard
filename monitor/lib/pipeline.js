@@ -9,7 +9,7 @@ const { execFile } = require('child_process');
 
 const PIPELINE_PY = process.env.PIPELINE_PY ||
   path.join(os.homedir(), 'Desktop/shopify-shop-demo/claude/scripts/pipeline/pipeline.py');
-const FILES = ['request', 'workorder', 'result'];
+const FILES = ['request', 'workorder', 'reply', 'result'];
 const ID = /^[A-Za-z0-9][A-Za-z0-9-]{0,63}$/;
 
 function readRows(stateDir) {
@@ -21,17 +21,20 @@ function readRows(stateDir) {
 
 const readJson = f => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
 
-// Tasks with stage history, the agent on it, the open question and the answer; newest activity first.
+// Tasks with stage history, where they run (cloud, or local and why), the agent on it, the open question and the answer; newest activity first.
 function readTasks(stateDir) {
   const tasks = {};
   for (const r of readRows(stateDir)) {
     if (!r.id) continue;
     const t = tasks[r.id] || (tasks[r.id] = { id: r.id, title: '', stage: null, stages: [], agent: null, last: r.ts,
-      planners: null });
+      planners: null, runsOn: null, reason: null, cloudUrl: null, cloudLanded: false });
     if (r.title) t.title = r.title;
     if (r.planners !== undefined) t.planners = r.planners;
     if (r.stage) { t.stage = r.stage; t.stages.push({ ts: r.ts, stage: r.stage, by: r.by, note: r.note || '' }); }
     if (r.event === 'assign') t.agent = r.agent;
+    if (r.event === 'place') { t.runsOn = r.runs_on; t.reason = r.reason || null; } // cloud first; local needs a reason
+    if (r.event === 'cloud-session' && /^https:\/\/claude\.ai\/code\//.test(r.url || '')) t.cloudUrl = r.url;
+    if (r.event === 'cloud-landed') t.cloudLanded = true;
     if (r.ts > t.last) t.last = r.ts;
   }
   for (const t of Object.values(tasks)) {

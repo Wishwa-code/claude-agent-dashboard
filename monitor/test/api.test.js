@@ -107,6 +107,16 @@ test('hook endpoint refuses browser requests', async () => {
   assert.strictEqual((await hook({ 'content-type': 'application/json' })).status, 200);
 });
 
+test('tasks show where they run: cloud by default, local with a reason', async () => {
+  const id = pl('new', 'Cloud task');
+  const local = pl('new', 'Local task');
+  pl('place', local, 'local', '--reason', 'browser');
+  const tasks = await (await fetch(base + '/api/tasks')).json();
+  assert.strictEqual(tasks.find(x => x.id === id).runsOn, 'cloud');
+  const l = tasks.find(x => x.id === local);
+  assert.deepStrictEqual([l.runsOn, l.reason], ['local', 'browser']);
+});
+
 test('tokens endpoint answers', async () => {
   const r = await fetch(base + '/api/tokens');
   assert.strictEqual(r.status, 200);

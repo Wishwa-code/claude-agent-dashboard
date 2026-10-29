@@ -192,6 +192,10 @@
   .qhead { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 2fr) auto; gap: 16px; align-items: center; }
   .qhead .ttl { font-weight: 600; font-size: 14px; overflow-wrap: anywhere; }
   .qhead .tid { font-size: 11.5px; color: var(--ink-3); display: flex; gap: 8px; flex-wrap: wrap; }
+  .where { display: inline-flex; align-items: center; gap: 4px; padding: 0 7px; border-radius: 999px; border: 1px solid var(--line); background: var(--sunk); }
+  .where.cloud { color: var(--ink-2); }
+  .where.local { color: var(--ink-3); }
+  .where a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
   .qhead .side { text-align: right; font-size: 12px; color: var(--ink-3); white-space: nowrap; display: grid; gap: 2px; }
   .qfiles { display: flex; gap: 6px; flex-wrap: wrap; }
   .qfiles button, .ask button { font: 500 12px Geist, system-ui, sans-serif; border: 1px solid var(--line-2); background: var(--panel); color: var(--ink);
@@ -614,17 +618,27 @@ function intro(v) {
 /* ---------- queue tab: tasks, stages and approvals ---------- */
 const answering = {}; // task id -> message shown under its buttons
 function stepsHtml(t) {
-  const idx = STEPS.findIndex(([k]) => k === t.stage), reached = new Set(t.stages.map(x => x.stage));
+  const stage = t.stage === 'in-cloud' ? 'analysing' : t.stage; // a cloud session does the analysing step
+  const idx = STEPS.findIndex(([k]) => k === stage), reached = new Set(t.stages.map(x => x.stage === 'in-cloud' ? 'analysing' : x.stage));
   const done = t.stage === 'done';
   const steps = STEPS.map(([k, label], i) => {
+    if (k === 'analysing' && t.runsOn === 'cloud') label = 'In cloud';
     let cls = reached.has(k) || (idx >= 0 && i < idx) ? 'done' : '';
     if (i === idx && !done) cls = k === 'awaiting-approval' ? 'wait' : 'cur';
     if (done && k === 'done') cls = 'done';
     return `<div class="st ${cls}" title="${esc(label)}">${esc(label)}</div>`;
   });
   if (['blocked', 'failed', 'cancelled'].includes(t.stage)) steps[Math.min(6, Math.max(0, STEPS.findIndex(([k]) => !reached.has(k))))] = `<div class="st stop">${esc(t.stage[0].toUpperCase() + t.stage.slice(1))}</div>`;
-  if (idx < 0 && !['blocked', 'failed', 'cancelled'].includes(t.stage)) return `<div class="chips"><span class="chip">${esc(t.stage || '?')}</span></div>`; // old pipeline stages
+  if (idx < 0 && !['blocked', 'failed', 'cancelled'].includes(stage)) return `<div class="chips"><span class="chip">${esc(t.stage || '?')}</span></div>`; // old pipeline stages
   return `<div class="steps">${steps.join('')}</div>`;
+}
+const REASONS = { browser: 'browser only', secrets: 'needs secrets', 'live-store': 'live store', 'local-files': 'local files',
+  tiny: 'tiny', 'cloud-failed': 'cloud failed' };
+function whereHtml(t) {
+  if (t.runsOn === 'cloud') return `<span class="where cloud"><i class="ph ph-cloud"></i> cloud${t.cloudUrl
+    ? ` · <a href="${esc(t.cloudUrl)}" target="_blank" rel="noopener">session</a>` : ''}${t.cloudLanded ? ' · landed' : ''}</span>`;
+  if (t.runsOn === 'local') return `<span class="where local" title="Runs locally: ${esc(t.reason || '')}"><i class="ph ph-laptop"></i> local · ${esc(REASONS[t.reason] || t.reason || '?')}</span>`;
+  return '';
 }
 function qtaskHtml(t) {
   const tk = tokens?.tasks.find(x => x.id === t.id);
@@ -640,7 +654,7 @@ function qtaskHtml(t) {
       ${answering[t.id] ? `<div class="msg">${esc(answering[t.id])}</div>` : ''}</div>`;
   return `<div class="qtask" data-q="${esc(t.id)}">
     <div class="qhead">
-      <div><div class="ttl">${esc(t.title || t.id)}</div><div class="tid"><span class="mono">${esc(t.id)}</span>${t.agent ? `<span>${esc(t.agent)}</span>` : ''}</div></div>
+      <div><div class="ttl">${esc(t.title || t.id)}</div><div class="tid"><span class="mono">${esc(t.id)}</span>${whereHtml(t)}${t.agent ? `<span>${esc(t.agent)}</span>` : ''}</div></div>
       ${stepsHtml(t)}
       <div class="side"><time>${CLOSED.has(t.stage) ? 'closed ' + hhmm(since) : 'waiting ' + dur(Date.now() - Date.parse(since))}</time>${tk ? `<span>${kfmt(tk.inputEq)} tokens</span>` : ''}</div>
     </div>
@@ -657,8 +671,12 @@ function renderBoard() {
   if (tab !== 'queue') return;
   const board = $('board');
   if (board.contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return; // don't wipe a half-typed answer
+  const placed = open.concat(closed).filter(t => t.runsOn), local = placed.filter(t => t.runsOn === 'local');
+  const why = Object.entries(local.reduce((m, t) => (m[t.reason] = (m[t.reason] || 0) + 1, m), {}))
+    .map(([r, n]) => `${n} ${REASONS[r] || r}`).join(', ');
+  const split = placed.length ? `<div class="qsplit">Cloud first: ${placed.length - local.length} cloud, ${local.length} local${why ? ` (${esc(why)})` : ''}</div>` : '';
   const html = (open.length || closed.length)
-    ? open.map(qtaskHtml).join('') + (closed.length ? `<div class="qsplit">Closed, last 24 hours</div>` + closed.map(qtaskHtml).join('') : '')
+    ? split + open.map(qtaskHtml).join('') + (closed.length ? `<div class="qsplit">Closed, last 24 hours</div>` + closed.map(qtaskHtml).join('') : '')
     : `<div class="empty">No queued tasks yet. Run <code>/queue</code> in a tab and give it a task.</div>`;
   if (board.dataset.h !== html) { board.innerHTML = html; board.dataset.h = html; }
 }
