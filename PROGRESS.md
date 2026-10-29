@@ -115,3 +115,19 @@ Planned phases:
 
 - **2026-10-29:** Queue tab shows cloud-first placement (shop repo `pipeline.py` now records `place`, `cloud-session`, `cloud-landed` rows and an `in-cloud` stage). `lib/pipeline.js` reads `runsOn`, `reason`, `cloudUrl` (only `https://claude.ai/code/…` links) and `cloudLanded`; each task card gets a cloud badge with its session link or a local badge with the reason; the "Analysing" step reads "In cloud" for cloud tasks; the board opens with "Cloud first: N cloud, M local (reasons)". `reply` added to the task files. Test added (24/24 pass).
 - **2026-10-29, next:** the v2 design is approved by the user: `docs/superpowers/specs/2026-10-29-multi-queue-cost-and-flow-design.md` (multiple queues, labels, API-equivalent cost per task, flow view and timeline). Build it in a fresh session: write the plan (superpowers:writing-plans), then carry it out natively (superpowers:executing-plans). The shop repo's queue is now "cloud first" (commit f72594c); extend it, don't undo it.
+
+- **2026-10-29: multiple queues, names, cost and flow view built** on branch `feat/multi-queue` in both repos (not merged yet). Spec: `docs/superpowers/specs/2026-10-29-multi-queue-cost-and-flow-design.md`; plan and its rulings: `docs/superpowers/plans/2026-10-29-multi-queue-cost-and-flow.md`.
+  - **Shop repo (`.claude/worktrees/multi-queue`):**
+    - `pipeline.py` has `queue-start` / `queue-end` / `queues` / `orphans` / `browser-busy`, with `--queue N` on `new`, `status`, `next-ready` and `answer` (exit 4 for another queue's task).
+    - Registry `queues.json` (fcntl-locked) holds Claude session ids; a pid check catches crashed tabs.
+    - `/queue` and `/browser-agent` skills updated.
+    - Tests: 28/28.
+  - **Dashboard:**
+    - Labels (`lib/labels.js`). A queue registered the old way shows as "Queue".
+    - API-equivalent cost (`lib/pricing.js`; prices checked on the official page 2026-10-29; Sonnet 5.5 cache read is $0.10).
+    - One box per queue, plus cloud nodes, box states and task badges. Edge width follows the hand-off count, and the latest hand-off is marked.
+    - Task timeline with click-to-highlight.
+    - `tools/shot.js` for screenshots.
+    - `npm test`: 43/43 (run with `PIPELINE_PY` pointing at the shop worktree until it is merged).
+  - **Still to do with the user:** merge both branches; a real two-tab `/queue` dry run (orphan question, `--continue`, a cross-queue "yes" refused); one task end to end with the browser agent writing `result.md`.
+

@@ -1,7 +1,7 @@
 # Two (or more) queues, clear names, cost per task, and a better flow view: design
 
 - **Date:** 2026-10-29
-- **Status:** approved by the user 2026-10-29
+- **Status:** approved by the user 2026-10-29; built 2026-10-29 on branch `feat/multi-queue` in both repos (plan: `docs/superpowers/plans/2026-10-29-multi-queue-cost-and-flow.md`)
 - **Builds on:** `2026-10-29-task-queue-and-dashboard-design.md` (v1, built and merged the same day).
 - **Repos:**
   - this repo holds the dashboard;
