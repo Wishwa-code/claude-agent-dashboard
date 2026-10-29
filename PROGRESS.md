@@ -108,7 +108,8 @@ Planned phases:
     - Browser agent runs each work order in a fresh subagent.
     - HTTP hooks.
   - **Still to verify, with the user:**
-    - spike S2: can a subagent drive the logged-in browser? Needs a live `/browser-agent`;
     - a dry run of `/queue`;
     - one real approved task end to end.
   - **On hold:** the agreement checker (Lighthouse + visual-check after each task); stage `checking` is reserved for it.
+- **2026-10-29:** Spike S2 passed. Two fresh Sonnet helpers, one after the other, each reached the logged-in Shopify admin (home, then themes) with no login page and no "browser already in use". Each cost about 43k tokens as a general-purpose subagent. Next idea: a lean `browser-worker` agent type with only the Playwright tools, like `analyst` (about 17k start). Still open: a `/queue` dry run and one real task end to end.
+
