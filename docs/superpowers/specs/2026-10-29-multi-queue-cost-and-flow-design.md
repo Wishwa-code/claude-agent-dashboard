@@ -165,3 +165,7 @@
 5. **Sonnet cache-read price (Claude's call).** The official pricing page wins over the skill's copy. The builder reads that cell's footnote while building and uses whatever the page says applies. The table records the date and URL.
 6. **"Session k" numbers (Claude's call).** Keep them in `~/.local/state/claude-dashboard/labels.json`, so a dashboard restart doesn't renumber. Reset at local midnight.
 7. **Old tasks with no queue (Claude's call).** Show them under "Earlier (before queues)", not as Queue 1. No queue is shown unless it was registered.
+8. **Renamed tabs (found 2026-10-29).**
+   - `/rename <name>` (typed by the user, since Claude can't run it) changes the name other tabs use to message a session. For example, `shopify-shop-demo-47` became `Queue 1`, and the `roles/queue` file went stale until it was re-registered.
+   - So every role and queue registration stores the **session id** as well as the name. `whois` resolves the current name from `~/.claude/sessions/*.json` by id, and the dashboard does the same.
+   - When `/queue` starts, it tells the user once: "This is Queue N. Type `/rename Queue N` to name this tab." `/browser-agent` does the same with "Browser agent".
