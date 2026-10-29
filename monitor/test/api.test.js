@@ -21,7 +21,7 @@ test.before(async () => {
   pl('ask', 'Q-001', '--question', 'Use custom CSS for the hero?');
   server = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
     env: { ...process.env, PORT: String(port), PIPELINE_STATE: state, PIPELINE_PY,
-      DASHBOARD_DB: path.join(state, 'd.sqlite'), PROJECT_DIR: state }, stdio: 'ignore' });
+      DASHBOARD_DB: path.join(state, 'd.sqlite'), LABELS_FILE: path.join(state, 'labels.json'), PROJECT_DIR: state }, stdio: 'ignore' });
   for (let i = 0; i < 50; i++) {
     try { const html = await (await fetch(base + '/')).text(); token = /name="dash-token" content="([^"]+)"/.exec(html)?.[1]; break; }
     catch { await new Promise(r => setTimeout(r, 100)); }
@@ -122,4 +122,18 @@ test('tokens endpoint answers', async () => {
   assert.strictEqual(r.status, 200);
   const j = await r.json();
   assert.ok(Array.isArray(j.sessions) && Array.isArray(j.tasks));
+});
+
+test('tasks carry their queue; tasks from before queues have none', async () => {
+  const id = pl('new', 'Footer', '--queue', '1');
+  const tasks = await (await fetch(base + '/api/tasks')).json();
+  assert.strictEqual(tasks.find(x => x.id === id).queue, 1);
+  assert.strictEqual(tasks.find(x => x.id === 'Q-001').queue, null);
+});
+
+test('sessions endpoint lists registered queues', async () => {
+  fs.writeFileSync(path.join(state, 'queues.json'), JSON.stringify([{ n: 1, session: 'gone', name: 'tab-1' }]));
+  const j = await (await fetch(base + '/api/sessions')).json();
+  assert.deepStrictEqual(j.queues.map(q => [q.n, q.live]), [[1, false]]);
+  assert.strictEqual(j.queues[0].open, 1);
 });

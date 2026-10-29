@@ -27,8 +27,9 @@ function readTasks(stateDir) {
   for (const r of readRows(stateDir)) {
     if (!r.id) continue;
     const t = tasks[r.id] || (tasks[r.id] = { id: r.id, title: '', stage: null, stages: [], agent: null, last: r.ts,
-      planners: null, runsOn: null, reason: null, cloudUrl: null, cloudLanded: false });
+      planners: null, runsOn: null, reason: null, cloudUrl: null, cloudLanded: false, queue: null });
     if (r.title) t.title = r.title;
+    if (r.stage === 'queued' && Number.isInteger(r.queue)) t.queue = r.queue; // the queue that took it; none before queues
     if (r.planners !== undefined) t.planners = r.planners;
     if (r.stage) { t.stage = r.stage; t.stages.push({ ts: r.ts, stage: r.stage, by: r.by, note: r.note || '' }); }
     if (r.event === 'assign') t.agent = r.agent;

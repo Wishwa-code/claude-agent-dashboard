@@ -354,9 +354,14 @@ function setTab(t) {
   flowSig = ''; render();
 }
 
-/* ---------- names: a session with a role is shown by its role ---------- */
-const roleOf = name => data && Object.keys(ROLE).find(r => data.roles[r] === name && byName[name]?.live);
-const display = name => name === 'you' ? 'You' : roleOf(name) ? ROLE[roleOf(name)].label : name;
+/* ---------- names: every box shows a label (Queue 2, Browser agent, Session 3); the Claude name sits underneath ---------- */
+const roleOf = name => {
+  const s = data && byName[name];
+  if (!s?.live) return undefined;
+  if (s.kind === 'queue') return 'queue';
+  if (data.roles['web-worker'] === name) return 'web-worker';
+};
+const display = name => name === 'you' ? 'You' : byName[name]?.label || name;
 function chip(name) {
   if (name === 'you') return '<span class="from"><i class="ph ph-user"></i>You</span>';
   if (name?.startsWith('sp:')) return `<span class="from"><i class="ph ph-lightbulb"></i>${esc(name.slice(3))}</span>`;
@@ -419,7 +424,7 @@ function computeLayout(v) {
     if (others.length) {
       const y = H + 10, colW = W / others.length;
       others.forEach((s, i) => nodes[s.name] = { x: colW * (i + .5), y, w: Math.min(220, colW - 28), h: 58, col: -1 });
-      heads.push({ x: 12, y: y - 44, text: 'OTHER SESSIONS', anchor: 'start' });
+      heads.push({ x: 12, y: y - 44, text: 'OTHER TABS', anchor: 'start' });
       H = y + 50;
     }
     return { W, H, narrow, nodes, heads };
@@ -530,10 +535,9 @@ function nodeContent(name, v) {
   if (s.status === 'busy') line = cur?.step ? `${cur.step.tool}: ${cur.step.text}` : 'Working';
   else if (s.status === 'closed') line = s.ghost ? 'Not running' : 'Closed';
   else line = `Idle ${dur(now - (s.statusSince || s.updated))}`;
-  const r = roleOf(name);
   return ['node' + (s.status === 'closed' ? ' closed' : ''),
-    `${r ? `<div class="n0">${esc(name)}</div>` : ''}<div class="n1"><span class="sw" style="--c:${colorOf(s)}"></span><b>${esc(display(name))}</b></div>
-     <div class="n2">${s.status === 'busy' ? '<i class="ph ph-circle-notch spin"></i> ' : ''}${esc(line)}</div>`];
+    `<div class="n1"><span class="sw" style="--c:${colorOf(s)}"></span><b>${esc(display(name))}</b></div>
+     ${display(name) !== name ? `<div class="n0">${esc(name)}</div>` : ''}<div class="n2">${s.status === 'busy' ? '<i class="ph ph-circle-notch spin"></i> ' : ''}${esc(line)}</div>`];
 }
 
 function updateFlow(v) {
@@ -724,8 +728,8 @@ function renderTokens() {
   const showClosed = $('closed').checked;
   const list = tokens.sessions.filter(s => s.live || showClosed);
   const html = list.length ? list.map(s => `<div class="tok">
-      <div><div class="nm">${s.live ? '<i class="ph-fill ph-circle" style="color:var(--good);font-size:9px"></i>' : ''}${esc(s.name)}</div>
-        <div class="sub">${s.turns} turns, last ${hhmm(s.lastTs)}${s.subagents.length ? `, ${s.subagents.length} subagents` : ''}</div></div>
+      <div><div class="nm">${s.live ? '<i class="ph-fill ph-circle" style="color:var(--good);font-size:9px"></i>' : ''}${esc(s.label || s.name)}</div>
+        <div class="sub">${s.label ? `<span class="mono">${esc(s.name)}</span> · ` : ''}${s.turns} turns, last ${hhmm(s.lastTs)}${s.subagents.length ? `, ${s.subagents.length} subagents` : ''}</div></div>
       ${ctxBar(s.context)}
       <div class="nums"><b>${kfmt(s.inputEq + s.subagentsEq)}</b> tokens<div class="sub">${kfmt(s.inputEq)} main${s.subagentsEq ? ` + ${kfmt(s.subagentsEq)} subagents` : ''}</div></div>
       ${s.subagents.length ? `<div class="subs">${s.subagents.slice(0, 8).map(a => `<div><span>${esc(a.description || a.id)}</span><span class="mono">${kfmt(a.inputEq)}, ${a.turns} turns</span></div>`).join('')}</div>` : ''}
@@ -785,7 +789,7 @@ function agentHtml(s) {
   const tasks = s.tasks.slice().reverse(), shown = tasks.slice(0, 10);
   return `<article class="agent ${esc(s.status)}" style="--c:${colorOf(s)}">
     <div class="bar"></div>
-    <div class="ahead"><span class="sw"></span><h3>${esc(r ? ROLE[r].label : s.name)}</h3>${r ? `<span class="sn">${esc(s.name)}</span>` : ''}${ctxPill(s.id)}${state}</div>
+    <div class="ahead"><span class="sw"></span><h3>${esc(display(s.name))}</h3>${display(s.name) !== s.name ? `<span class="sn">${esc(s.name)}</span>` : ''}${ctxPill(s.id)}${state}</div>
     <div class="asub"><span>${esc(r ? ROLE[r].blurb : (s.title || 'No pipeline role'))}</span>${s.pid ? `<span>pid <span class="mono">${s.pid}</span></span>` : ''}</div>
     ${nowBox}${helpers}
     <div class="spark" aria-label="Activity over the last 3 hours">${bars}</div>

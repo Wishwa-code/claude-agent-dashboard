@@ -25,6 +25,7 @@ const SESSIONS = path.join(os.homedir(), '.claude/sessions');
 const STATE = process.env.PIPELINE_STATE || path.join(os.homedir(), '.local/state/polek-dev'); // override only for testing
 const BROWSER_AGENT_FILE = path.join(STATE, 'browser-agent');
 const ROLES = ['queue', 'web-worker', 'intake', 'dispatcher']; // registered by claude/scripts/pipeline/pipeline.py
+const LABELS_FILE = process.env.LABELS_FILE || path.join(os.homedir(), '.local/state/claude-dashboard/labels.json');
 const DB_FILE = process.env.DASHBOARD_DB || path.join(os.homedir(), '.local/state/claude-dashboard/dashboard.sqlite');
 const FIRST_READ = 24 * 1024 * 1024; // only the tail of a transcript is read on first sight (they reach 85 MB)
 const MAX_EVENTS = 300;
@@ -45,6 +46,9 @@ const { handleHook } = require('./lib/hooks');
 const { createStream } = require('./lib/sse');
 const { readTasks, taskFile, answerTask } = require('./lib/pipeline');
 const { sessionUsage, inputEq, total, WEIGHTS } = require('./lib/usage');
+const { readQueues, createLabeller } = require('./lib/labels');
+const labeller = createLabeller(LABELS_FILE);
+const sessionLabels = {}; // session id -> last label, for the tokens view
 
 function newTask(c, e, name, from) {
   const t = { id: e.id, name, from, prompt: e.text, start: e.ts, end: e.ts, steps: 0, tools: {}, step: null,
@@ -158,6 +162,7 @@ function snapshot() {
   if (!roles['web-worker']) roles['web-worker'] = firstLine(BROWSER_AGENT_FILE);
   const browserAgent = roles['web-worker'];
   const live = liveSessions();
+  const queues = readQueues(STATE);
   const byId = new Map(live.map(s => [s.sessionId, s]));
   const found = [];
   const cutoff = Date.now() - RECENT_HOURS * 3600e3;
@@ -209,8 +214,10 @@ function snapshot() {
       const h = /^BROWSER (TASK|RESULT|ACK|QUESTION)\s+(\S+)/.exec(e.text);
       link(name, peerName(e.peer), e.ts, h ? `${h[1].toLowerCase()} ${humanise(h[2].replace(/:$/, ''))}` : taskName(e.text));
     }
+    const lab = labeller.label({ id, name }, { queues, browserAgentName: s ? browserAgent : '' });
+    sessionLabels[id] = lab.label;
     return {
-      id, name, live: !!s, status, pid: s?.pid, slot: colorSlot[id], browserAgent: !!s && s.name === browserAgent,
+      id, name, ...lab, live: !!s, status, pid: s?.pid, slot: colorSlot[id], browserAgent: !!s && s.name === browserAgent,
       role: s ? ROLES.find(r => roles[r] === name) || '' : '',
       spawns: Object.values(t.spawns).filter(sp => Date.parse(sp.start) >= Date.now() - 3 * 3600e3),
       title: t.title, updated: Math.max(t.mtime, s?.statusUpdatedAt || 0), statusSince: s?.statusUpdatedAt,
@@ -221,7 +228,12 @@ function snapshot() {
     };
   });
   sessions.sort((a, b) => (b.live - a.live) || (a.slot - b.slot)); // stable order, so boxes don't jump around
-  return { now: Date.now(), browserAgent, roles, pipeline: readLedger(cutoff), bucketMin: BUCKET_MIN, sessions, links: Object.values(links) };
+  const liveIds = new Set(live.map(s => s.sessionId));
+  const openBy = {};
+  for (const t of readTasks(STATE)) if (t.queue !== null && !['done', 'cancelled', 'failed', 'reported'].includes(t.stage)) openBy[t.queue] = (openBy[t.queue] || 0) + 1;
+  const queueList = queues.map(q => ({ n: q.n, sessionId: q.session, name: q.name, live: liveIds.has(q.session),
+    ended: !!q.ended, open: openBy[q.n] || 0 }));
+  return { now: Date.now(), browserAgent, roles, queues: queueList, pipeline: readLedger(cutoff), bucketMin: BUCKET_MIN, sessions, links: Object.values(links) };
 }
 
 // Tokens per session (main transcript) and per subagent, plus per queue task: the sum over subagents whose
@@ -253,7 +265,7 @@ function tokensView() {
       return row;
     }).sort((a, b) => b.inputEq - a.inputEq);
     const s = byId.get(id);
-    return { id, name: s?.name || sessionNames[id] || '(closed) ' + id.slice(0, 8), live: !!s, ...sum(u.main),
+    return { id, name: s?.name || sessionNames[id] || '(closed) ' + id.slice(0, 8), label: sessionLabels[id] || '', live: !!s, ...sum(u.main),
       byModel: u.main.byModel, subagents, subagentsEq: subagents.reduce((a, x) => a + x.inputEq, 0) };
   }).sort((a, b) => (b.live - a.live) || (b.inputEq - a.inputEq));
   return { now: Date.now(), weights: WEIGHTS, sessions, tasks: Object.values(tasks) };
