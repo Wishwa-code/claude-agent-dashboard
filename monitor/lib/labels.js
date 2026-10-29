@@ -34,9 +34,10 @@ function createLabeller(file, now = () => new Date()) {
     } catch { /* numbers then only last until restart */ }
   };
   return {
-    label(session, { queues = [], browserAgentName = '' } = {}) {
+    label(session, { queues = [], browserAgentName = '', legacyQueueName = '' } = {}) {
       const q = queues.find(x => x.session === session.id);
       if (q) return { label: `Queue ${q.n}`, kind: 'queue', queue: q.n };
+      if (legacyQueueName && session.name === legacyQueueName) return { label: 'Queue', kind: 'queue', queue: null }; // before numbered queues
       if (browserAgentName && session.name === browserAgentName) return { label: 'Browser agent', kind: 'browser' };
       const s = load();
       if (!s.ids[session.id]) { s.ids[session.id] = s.next++; save(); }

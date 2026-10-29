@@ -216,7 +216,7 @@ function snapshot() {
       const h = /^BROWSER (TASK|RESULT|ACK|QUESTION)\s+(\S+)/.exec(e.text);
       link(name, peerName(e.peer), e.ts, h ? `${h[1].toLowerCase()} ${humanise(h[2].replace(/:$/, ''))}` : taskName(e.text));
     }
-    const lab = labeller.label({ id, name }, { queues, browserAgentName: s ? browserAgent : '' });
+    const lab = labeller.label({ id, name }, { queues, browserAgentName: s ? browserAgent : '', legacyQueueName: s ? roles.queue : '' });
     sessionLabels[id] = lab.label;
     return {
       id, name, ...lab, live: !!s, status, pid: s?.pid, slot: colorSlot[id], browserAgent: !!s && s.name === browserAgent,
@@ -275,7 +275,8 @@ function tokensView() {
     }).sort((a, b) => b.inputEq - a.inputEq);
     const s = byId.get(id);
     const name = s?.name || sessionNames[id] || '(closed) ' + id.slice(0, 8);
-    const label = sessionLabels[id] || labeller.label({ id, name }, { queues, browserAgentName: s ? browserAgent : '' }).label;
+    const label = sessionLabels[id] || labeller.label({ id, name }, { queues, browserAgentName: s ? browserAgent : '',
+      legacyQueueName: s ? firstLine(path.join(STATE, 'roles', 'queue')) : '' }).label;
     return { id, name, label, live: !!s, ...sum(u.main),
       byModel: u.main.byModel, subagents, subagentsEq: subagents.reduce((a, x) => a + x.inputEq, 0),
       subagentsCost: subagents.reduce((a, x) => a + x.cost, 0) };

@@ -93,8 +93,18 @@
   .node.you .n2 { color: color-mix(in srgb, var(--panel) 70%, var(--ink)); }
   .sw { width: 10px; height: 10px; border-radius: 3px; background: var(--c); flex: none; }
   .tag { font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--ink-2); flex: none; }
-  .ring { fill: none; stroke-width: 2; stroke-dasharray: 10 6; animation: flow 1.4s linear infinite; opacity: 0; transition: opacity .4s; }
+  .ring { fill: none; stroke: var(--good); stroke-width: 2; stroke-dasharray: 10 6; animation: flow 1.4s linear infinite; opacity: 0; transition: opacity .4s; }
   .ring.on { opacity: .9; }
+  .ring.wait { opacity: .9; stroke: var(--warning); stroke-dasharray: none; animation: none; }
+  /* box states: working (green), waiting for you (amber), idle (grey), closed (faded) */
+  .node.working { border-color: var(--good); }
+  .node.waiting { border-color: var(--warning); background: color-mix(in srgb, var(--warning) 10%, var(--panel)); }
+  .node.closed { opacity: .7; }
+  .node.cloud .n1 i { color: var(--s0); }
+  .tbadge { margin-left: auto; font: 500 10.5px 'Geist Mono', monospace; padding: 0 6px; border-radius: 999px; background: var(--sunk);
+    border: 1px solid var(--line-2); color: var(--ink-2); flex: none; }
+  .lastdot { stroke: var(--panel); stroke-width: 1.5; }
+
   .ripple { fill: none; stroke-width: 1.5; animation: ripple .9s ease-out forwards; }
   @keyframes ripple { from { opacity: .8; transform: scale(1); } to { opacity: 0; transform: scale(1.12); } }
   .particle { stroke: var(--panel); stroke-width: 2; }
@@ -375,6 +385,8 @@ function chip(name) {
 }
 
 /* ---------- which sessions, helpers and links to show ---------- */
+// A task belongs to the queue on its "queued" row; a queue registered the old way (no number) owns the tasks from before queues.
+const sameQueue = (t, n) => n == null ? t.queue == null : t.queue === n;
 function visible() {
   const showClosed = $('closed').checked;
   let sessions = data.sessions.filter(s => s.live || showClosed);
@@ -384,15 +396,31 @@ function visible() {
   for (const l of links) for (const n of [l.from, l.to]) {
     if (n !== 'you' && !names.has(n)) { names.add(n); sessions.push({ ...(byName[n] || { name: n, live: false, status: 'closed', tasks: [], events: [], activity: [], spawns: [] }), ghost: true }); }
   }
-  // Analysts the queue started: running ones, plus those that finished in the last 15 min.
-  const disp = data.roles.queue && byName[data.roles.queue]?.live ? byName[data.roles.queue] : null;
-  const helpers = disp ? disp.spawns.filter(sp => !sp.end || data.now - Date.parse(sp.end) < 15 * 60e3).slice(-5) : [];
-  for (const h of helpers) {
-    links.push({ from: disp.name, to: 'sp:' + h.id, count: 1, last: h.start, label: h.name, helper: true });
-    if (h.end) links.push({ from: 'sp:' + h.id, to: disp.name, count: 1, last: h.end, label: 'work order back', helper: true });
+  // Queues: every live queue tab, plus registered queues whose tab closed with tasks unfinished (orphans).
+  const queues = data.sessions.filter(s => s.kind === 'queue' && s.live).map(s => ({ key: s.name, n: s.queue, s }));
+  for (const q of data.queues || []) {
+    if (queues.some(x => x.n === q.n) || !q.open) continue;
+    const s = data.sessions.find(x => x.id === q.sessionId);
+    if (s && !names.has(s.name)) { names.add(s.name); sessions.push({ ...s, ghost: true }); }
+    queues.push({ key: s ? s.name : 'q:' + q.n, n: q.n, s, orphan: q.open });
   }
-  const pipelineMode = ORDER.some(r => data.roles[r] && byName[data.roles[r]]?.live);
-  return { sessions, links, helpers, disp, pipelineMode };
+  queues.sort((a, b) => (a.n ?? 0) - (b.n ?? 0));
+  // Per queue: the analysts it started (running, or finished in the last 15 min) and one node for its tasks in the cloud.
+  const helpers = [], clouds = [];
+  for (const q of queues) {
+    for (const h of q.s?.live ? q.s.spawns.filter(sp => !sp.end || data.now - Date.parse(sp.end) < 15 * 60e3).slice(-5) : []) {
+      helpers.push({ ...h, q: q.key });
+      links.push({ from: q.key, to: 'sp:' + h.id, count: 1, last: h.start, label: h.name, helper: true });
+      if (h.end) links.push({ from: 'sp:' + h.id, to: q.key, count: 1, last: h.end, label: 'work order back', helper: true });
+    }
+    const inCloud = (qtasks || []).filter(t => t.stage === 'in-cloud' && sameQueue(t, q.n));
+    if (inCloud.length) {
+      clouds.push({ key: 'cloud:' + q.key, q: q.key, tasks: inCloud });
+      links.push({ from: q.key, to: 'cloud:' + q.key, count: inCloud.length, last: inCloud[0].last, label: 'in cloud', helper: true });
+    }
+  }
+  const pipelineMode = queues.length > 0 || !!(data.roles['web-worker'] && byName[data.roles['web-worker']]?.live);
+  return { sessions, links, helpers, clouds, queues, pipelineMode };
 }
 
 /* ---------- geometry ---------- */
@@ -404,7 +432,9 @@ function computeLayout(v) {
   const W = $('flow').clientWidth || 900, narrow = W < 760;
   const nodes = {}, heads = [];
   const roleSession = r => v.sessions.find(s => s.live && s.name === data.roles[r]);
-  const others = v.sessions.filter(s => !ORDER.some(r => roleSession(r) === s));
+  const isHelper = k => k.startsWith('sp:') || k.startsWith('cloud:') || k === 'role:analysts';
+  const analysts = v.queues.flatMap(q => [...v.helpers.filter(h => h.q === q.key).map(h => 'sp:' + h.id),
+    ...v.clouds.filter(c => c.q === q.key).map(c => c.key)]);
   if (!v.pipelineMode) { // no roles yet: everyone in one row under You
     const n = Math.max(1, v.sessions.length), colW = W / n;
     if (!narrow) {
@@ -413,25 +443,28 @@ function computeLayout(v) {
       return { W, H: 372, narrow, nodes, heads };
     }
   }
-  const stages = [['you'], [roleSession('queue')?.name || 'role:queue'],
-    v.helpers.length ? v.helpers.map(h => 'sp:' + h.id) : ['role:analysts'], [roleSession('web-worker')?.name || 'role:web-worker']];
-  const titles = ['', 'Queue', 'Analysts', 'Browser agent'];
+  const stages = [['you'], v.queues.length ? v.queues.map(q => q.key) : ['role:queue'],
+    analysts.length ? analysts : ['role:analysts'], [roleSession('web-worker')?.name || 'role:web-worker']];
+  const titles = ['', v.queues.length > 1 ? 'Queues' : 'Queue', 'Analysts', 'Browser agent'];
   if (!v.pipelineMode) stages.splice(1, stages.length, ...v.sessions.map(s => [s.name]));
+  const placed = new Set(stages.flat());
+  const others = v.sessions.filter(s => !placed.has(s.name));
   if (!narrow) {
     const fx = [.08, .34, .62, .89], w = Math.min(215, W * .19);
-    const mid = 136, gap = 62, maxStack = Math.max(...stages.map(s => s.length));
+    const gapOf = keys => keys.some(k => !isHelper(k)) ? 84 : 62; // full boxes are 70 tall, helpers 50
+    const mid = Math.max(136, ...stages.map(keys => (keys.length - 1) / 2 * gapOf(keys) + 70)), gaps = stages.map(gapOf);
     stages.forEach((keys, c) => keys.forEach((k, i) => {
-      const helper = k.startsWith('sp:') || k === 'role:analysts';
-      nodes[k] = { x: W * fx[c], y: mid + (i - (keys.length - 1) / 2) * gap, w: k === 'you' ? Math.min(140, w) : helper ? w - 20 : w, h: helper ? 50 : 70, col: c };
+      const helper = isHelper(k);
+      nodes[k] = { x: W * fx[c], y: mid + (i - (keys.length - 1) / 2) * gaps[c], w: k === 'you' ? Math.min(140, w) : helper ? w - 20 : w, h: helper ? 50 : 70, col: c };
     }));
     stages.forEach((keys, c) => titles[c] && heads.push({ x: W * fx[c], y: 18, text: titles[c].toUpperCase() }));
-    const stackBottom = mid + (maxStack - 1) / 2 * gap + 31;
-    let H = Math.max(stackBottom, mid + 31) + 110;
+    const stackBottom = Math.max(...Object.values(nodes).map(n => n.y + n.h / 2));
+    let H = stackBottom + 110;
     if (others.length) {
       const y = H + 10, colW = W / others.length;
-      others.forEach((s, i) => nodes[s.name] = { x: colW * (i + .5), y, w: Math.min(220, colW - 28), h: 58, col: -1 });
-      heads.push({ x: 12, y: y - 44, text: 'OTHER TABS', anchor: 'start' });
-      H = y + 50;
+      others.forEach((s, i) => nodes[s.name] = { x: colW * (i + .5), y, w: Math.min(220, colW - 28), h: 70, col: -1 });
+      heads.push({ x: 12, y: y - 50, text: 'OTHER TABS', anchor: 'start' });
+      H = y + 56;
     }
     return { W, H, narrow, nodes, heads };
   }
@@ -439,11 +472,11 @@ function computeLayout(v) {
   const w = Math.min(250, W * .6);
   let y = 36, row = 0;
   for (const keys of stages) for (const k of keys) {
-    const helper = k.startsWith('sp:') || k === 'role:analysts';
+    const helper = isHelper(k);
     nodes[k] = { x: W / 2, y, w: k === 'you' ? 140 : helper ? w - 30 : w, h: helper ? 48 : 68, col: row++ };
     y += helper ? 70 : 92;
   }
-  for (const s of others) { nodes[s.name] = { x: W / 2, y, w, h: 58, col: row++ }; y += 92; }
+  for (const s of others) { nodes[s.name] = { x: W / 2, y, w, h: 70, col: row++ }; y += 92; }
   return { W, H: y - 20, narrow, nodes, heads };
 }
 
@@ -504,6 +537,10 @@ function buildFlow(v) {
     const [tx, ty] = bezTan(g, 1), len = Math.hypot(tx, ty) || 1, ux = tx / len, uy = ty / len, [ex, ey] = [g[3][0] + ux * 6, g[3][1] + uy * 6];
     el('path', { class: 'arrow', 'data-k': key, fill: c,
       d: `M${ex},${ey} L${ex - ux * 9 - uy * 5},${ey - uy * 9 + ux * 5} L${ex - ux * 9 + uy * 5},${ey - uy * 9 - ux * 5} Z` }, gE);
+    if (!l.helper) { // the latest hand-off stays marked, with its time
+      const [dx, dy] = bez(g, .92);
+      el('circle', { class: 'lastdot', 'data-k': key, cx: dx, cy: dy, r: 3.5, fill: c }, gL); // its time is in the edge label
+    }
     if (!layout.narrow && !l.helper) {
       const [mx, my] = bez(g, .5);
       const pair = v.links.some(o => o.from === l.to && o.to === l.from) && l.from > l.to; // two-way: keep the labels apart
@@ -512,8 +549,7 @@ function buildFlow(v) {
     }
   }
   for (const [name, n] of Object.entries(layout.nodes)) {
-    el('rect', { class: 'ring', 'data-n': name, x: n.x - n.w / 2 - 5, y: n.y - n.h / 2 - 5, width: n.w + 10, height: n.h + 10, rx: 14,
-      stroke: colorOf(byName[name]) }, gN);
+    el('rect', { class: 'ring', 'data-n': name, x: n.x - n.w / 2 - 5, y: n.y - n.h / 2 - 5, width: n.w + 10, height: n.h + 10, rx: 14 }, gN);
     const fo = el('foreignObject', { x: n.x - n.w / 2, y: n.y - n.h / 2, width: n.w, height: n.h, 'data-n': name }, gN);
     fo.innerHTML = '<div xmlns="http://www.w3.org/1999/xhtml" class="node"></div>';
   }
@@ -526,6 +562,14 @@ function nodeContent(name, v) {
     return ['node you', `<div class="n1"><i class="ph ph-user"></i><b>You</b></div><div class="n2">${n} ${n === 1 ? 'prompt' : 'prompts'} in 24 h</div>`];
   }
   if (name === 'role:analysts') return ['node helper missing', `<div class="n1"><i class="ph ph-lightbulb"></i><b>No analysts running</b></div><div class="n2">Queue runs up to 3 at once</div>`];
+  if (name.startsWith('cloud:')) {
+    const c = v.clouds.find(x => x.key === name);
+    return ['node helper cloud', `<div class="n1"><i class="ph ph-cloud"></i><b>${c.tasks.length} in cloud</b></div><div class="n2">${esc(c.tasks.map(t => t.id).join(', '))}</div>`];
+  }
+  if (name.startsWith('q:')) { // a registered queue whose tab left no transcript behind
+    const q = v.queues.find(x => x.key === name);
+    return ['node closed', `<div class="n1"><b>Queue ${q.n}</b></div><div class="n2">Tab closed: ${q.orphan} unfinished. /queue offers to continue it.</div>`];
+  }
   if (name.startsWith('role:')) {
     const r = ROLE[name.slice(5)];
     return ['node missing', `<div class="n1"><b>${r.label}</b></div><div class="n2">Not started: run ${r.start} in a tab</div>`];
@@ -537,26 +581,49 @@ function nodeContent(name, v) {
   }
   const s = byName[name] || v.sessions.find(x => x.name === name) || { name, status: 'closed' };
   const cur = s.tasks?.[s.tasks.length - 1];
+  const orphan = v.queues.find(q => q.key === name)?.orphan;
   let line;
   if (s.status === 'busy') line = cur?.step ? `${cur.step.tool}: ${cur.step.text}` : 'Working';
-  else if (s.status === 'closed') line = s.ghost ? 'Not running' : 'Closed';
+  else if (s.status === 'closed') line = orphan ? `Tab closed: ${orphan} unfinished` : s.ghost ? 'Not running' : 'Closed';
   else line = `Idle ${dur(now - (s.statusSince || s.updated))}`;
-  return ['node' + (s.status === 'closed' ? ' closed' : ''),
-    `<div class="n1"><span class="sw" style="--c:${colorOf(s)}"></span><b>${esc(display(name))}</b></div>
+  return ['node ' + nodeState(s),
+    `<div class="n1"><span class="sw" style="--c:${colorOf(s)}"></span><b>${esc(display(name))}</b>${badgeOf(s)}</div>
      ${display(name) !== name ? `<div class="n0">${esc(name)}</div>` : ''}<div class="n2">${s.status === 'busy' ? '<i class="ph ph-circle-notch spin"></i> ' : ''}${esc(line)}</div>`];
+}
+
+// working (busy), waiting for you (an open approval in this queue, or Claude asking for permission), idle, closed
+function nodeState(s) {
+  if (!s || s.status === 'closed' || !s.live) return 'closed';
+  if (s.kind === 'queue' && (qtasks || []).some(t => t.stage === 'awaiting-approval' && !t.answer && sameQueue(t, s.queue))) return 'waiting';
+  if (s.status === 'busy') return 'working';
+  return s.status && s.status !== 'idle' ? 'waiting' : 'idle';
+}
+// The task a box is on, and for how long: a queue's newest open task, the browser agent's task in the browser.
+function badgeOf(s) {
+  const open = (qtasks || []).filter(t => !CLOSED.has(t.stage));
+  const t = s.kind === 'queue' ? open.filter(t => sameQueue(t, s.queue)).sort((a, b) => String(b.last).localeCompare(String(a.last)))[0]
+    : roleOf(s.name) === 'web-worker' ? open.find(t => t.stage === 'with-browser') : null;
+  if (!t) return '';
+  const since = t.stages[t.stages.length - 1]?.ts || t.last;
+  return `<span class="tbadge" title="${esc(t.title)}">${esc(t.id)} · ${dur(data.now - Date.parse(since))}</span>`;
 }
 
 function updateFlow(v) {
   for (const l of v.links) {
     const key = l.from + '>' + l.to;
     const active = data.now - Date.parse(l.last) < 5 * 60e3;
-    const w = 1.5 + Math.min(l.count, 8) * 0.45;
+    const w = 1 + 3 * Math.min(l.count, 12) / 12; // 1-4 px by hand-offs in 24 h
     document.querySelectorAll(`#flow [data-k="${CSS.escape(key)}"]`).forEach(e => {
       if (e.classList.contains('edge')) { e.classList.toggle('active', active); e.setAttribute('stroke-width', w); }
       if (e.classList.contains('arrow')) e.classList.toggle('active', active);
+      if (e.classList.contains('lastdot') && e.dataset.t !== l.last) {
+        e.dataset.t = l.last;
+        e.innerHTML = '';
+        const t = document.createElementNS(SVGNS, 'title'); t.textContent = `Latest hand-off ${hhmm(l.last)}: ${l.label}`; e.appendChild(t);
+      }
       if (e.classList.contains('elabel')) {
         e.querySelector('.cnt').textContent = l.count + (l.from === 'you' ? (l.count === 1 ? ' task  ' : ' tasks  ') : (l.count === 1 ? ' msg  ' : ' msgs  '));
-        e.querySelector('.lt').textContent = l.label.length > 26 ? l.label.slice(0, 25) + '…' : l.label;
+        e.querySelector('.lt').textContent = `last ${hhmm(l.last)}: ` + (l.label.length > 22 ? l.label.slice(0, 21) + '…' : l.label);
         e.querySelector('title')?.remove();
         const t = document.createElementNS(SVGNS, 'title'); t.textContent = `Last: ${l.label} (${hhmm(l.last)})`; e.appendChild(t);
       }
@@ -568,7 +635,9 @@ function updateFlow(v) {
     const [cls, html] = nodeContent(name, v);
     if (div.className !== cls) div.className = cls;
     if (div.dataset.h !== html) { div.innerHTML = html; div.dataset.h = html; }
-    document.querySelector(`#flow rect.ring[data-n="${CSS.escape(name)}"]`)?.classList.toggle('on', byName[name]?.status === 'busy');
+    const ring = document.querySelector(`#flow rect.ring[data-n="${CSS.escape(name)}"]`), st = byName[name] && nodeState(byName[name]);
+    ring?.classList.toggle('on', st === 'working');
+    ring?.classList.toggle('wait', st === 'waiting');
   }
 }
 
@@ -874,7 +943,7 @@ function renderKpis(v) {
 }
 
 function renderHowto(v) {
-  const missing = ORDER.filter(r => !(data.roles[r] && byName[data.roles[r]]?.live));
+  const missing = ORDER.filter(r => r === 'queue' ? !v.queues.some(q => q.s?.live) : !(data.roles[r] && byName[data.roles[r]]?.live));
   $('howto').hidden = !missing.length;
   if (missing.length) $('howto').innerHTML = `<div>To finish the pipeline: ${missing.map(r => `run <code>${ROLE[r].start}</code> in the tab that should be the ${ROLE[r].label}`).join('; ')}.</div>`;
 }
@@ -885,7 +954,7 @@ function render() {
   const v = visible();
   if (tab === 'pipeline') {
     const sig = [Math.round($('flow').clientWidth / 20), v.pipelineMode, v.sessions.map(s => s.name + ':' + (s.slot ?? '') + ':' + (roleOf(s.name) || '')).join('|'),
-      v.links.map(l => l.from + '>' + l.to).join('|')].join('#');
+      v.links.map(l => l.from + '>' + l.to).join('|'), v.queues.map(q => q.key).join('|')].join('#');
     if (sig !== flowSig) { buildFlow(v); flowSig = sig; }
     updateFlow(v);
     renderAgents(v);

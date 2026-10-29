@@ -48,3 +48,9 @@ test('numbers reset at local midnight', () => {
   const next = createLabeller(file, day(30));
   assert.strictEqual(next.label({ id: 'z', name: 'n-z' }, ctx).label, 'Session 1');
 });
+
+test('a queue registered the old way (roles/queue) is still a queue', () => {
+  const l = createLabeller(path.join(tmp(), 'labels.json'), day(29));
+  assert.deepStrictEqual(l.label({ id: 'x', name: 'tab-q' }, { queues: [], legacyQueueName: 'tab-q' }),
+    { label: 'Queue', kind: 'queue', queue: null });
+});
