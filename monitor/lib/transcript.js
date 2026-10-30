@@ -110,7 +110,7 @@ function toEvents(o) {
           first: clip(String(b.input?.message ?? '').trim().split('\n')[0], 200) });
       } else if (b.type === 'tool_use' && b.name === 'Agent') {
         out.push({ id, ts, kind: 'spawn', toolId: b.id, text: clip(b.input?.description || 'Agent', 80),
-          model: b.input?.model || '', prompt: clip(b.input?.prompt, 400) });
+          model: b.input?.model || '', type: b.input?.subagent_type || '', prompt: clip(b.input?.prompt, 400) });
       } else if (b.type === 'tool_use') {
         out.push({ id, ts, kind: 'tool', tool: toolLabel(b.name), text: clip(toolSummary(b.name, b.input), 200) });
       }

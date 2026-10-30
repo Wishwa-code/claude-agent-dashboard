@@ -117,7 +117,7 @@ function readTranscript(file) {
           if (sp && !sp.end) sp.end = e.ts;
           continue;
         }
-        if (e.kind === 'spawn') c.spawns[e.toolId] = { id: e.toolId, name: e.text, model: e.model, start: e.ts, end: null };
+        if (e.kind === 'spawn') c.spawns[e.toolId] = { id: e.toolId, name: e.text, model: e.model, type: e.type, start: e.ts, end: null };
         c.events.push(e);
         if (e.kind === 'send') c.sends.push(e); // kept apart: busy sessions push messages out of the event window
         addToTasks(c, e);
@@ -182,11 +182,16 @@ function snapshot() {
   // Names are resolved only after every transcript was read, so names learnt anywhere apply everywhere.
   // A session gets a new name when VS Code restarts, and a closed session's name is gone. Its earlier names are
   // recovered from sessions that received its messages, and all of them map to its current name.
-  for (const s of live) knownSocks['uds:' + s.messagingSocketPath] = s.name;
+  // Two live tabs can get the same name after a VS Code restart. The diagram and links key on the name, so a shared
+  // one would merge both tabs into one box: those tabs get a unique name here. Roles still match on the real name.
+  const nameCount = {};
+  for (const s of live) nameCount[s.name] = (nameCount[s.name] || 0) + 1;
+  const uniqueName = s => (nameCount[s.name] > 1 ? `${s.name} (${s.sessionId.slice(0, 4)})` : s.name);
+  for (const s of live) knownSocks['uds:' + s.messagingSocketPath] = uniqueName(s);
   const alias = {};
   for (const f of found) {
     const names = new Set(f.t.sends.map(e => sentText[e.text.slice(0, 120)]).filter(Boolean));
-    f.name = f.s?.name || [...names].pop() || '(closed) ' + f.id.slice(0, 8);
+    f.name = (f.s && uniqueName(f.s)) || [...names].pop() || '(closed) ' + f.id.slice(0, 8);
     sessionNames[f.id] = f.name;
     for (const n of names) alias[n] = f.name;
   }
@@ -216,11 +221,12 @@ function snapshot() {
       const h = /^BROWSER (TASK|RESULT|ACK|QUESTION)\s+(\S+)/.exec(e.text);
       link(name, peerName(e.peer), e.ts, h ? `${h[1].toLowerCase()} ${humanise(h[2].replace(/:$/, ''))}` : taskName(e.text));
     }
-    const lab = labeller.label({ id, name }, { queues, browserAgentName: s ? browserAgent : '', legacyQueueName: s ? roles.queue : '' });
+    const realName = s?.name || name;
+    const lab = labeller.label({ id, name: realName }, { queues, browserAgentName: s ? browserAgent : '', legacyQueueName: s ? roles.queue : '' });
     sessionLabels[id] = lab.label;
     return {
       id, name, ...lab, live: !!s, status, pid: s?.pid, slot: colorSlot[id], browserAgent: !!s && s.name === browserAgent,
-      role: s ? ROLES.find(r => roles[r] === name) || '' : '',
+      role: s ? ROLES.find(r => roles[r] === realName) || '' : '',
       spawns: Object.values(t.spawns).filter(sp => Date.parse(sp.start) >= Date.now() - 3 * 3600e3),
       title: t.title, updated: Math.max(t.mtime, s?.statusUpdatedAt || 0), statusSince: s?.statusUpdatedAt,
       activity: Array.from({ length: BUCKETS }, (_, i) => t.buckets[nowBucket - BUCKETS + 1 + i] || 0),
@@ -262,7 +268,7 @@ function tokensView() {
   for (const t of readTasks(STATE)) if (t.cloud) taskRow(t.id).cloud = true; // shown even when nothing ran locally
   const sessions = Object.entries(usage).map(([id, u]) => {
     const subagents = Object.entries(u.subagents).map(([aid, st]) => {
-      const row = { id: aid, description: st.description, ...sum(st) };
+      const row = { id: aid, description: st.description, agentType: st.agentType || '', ...sum(st) };
       const task = /\b(Q-\d+)$/.exec(st.description || '')?.[1];
       if (task) {
         const t = taskRow(task);

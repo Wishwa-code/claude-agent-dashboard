@@ -88,7 +88,8 @@
   .node.closed, .node.missing { background: var(--sunk); border-style: dashed; box-shadow: none; }
   .node.closed .n1, .node.missing .n1 { color: var(--ink-2); }
   .node.helper { padding: 6px 10px; border-radius: 8px; }
-  .node.helper.done { opacity: .55; box-shadow: none; }
+  .node.helper.k-analyst { border-left: 3px solid var(--s4, var(--good)); }
+  .node.helper.k-coder { border-left: 3px solid var(--s2, var(--good)); }
   .node.you { background: var(--ink); color: var(--panel); border-color: var(--ink); }
   .node.you .n2 { color: color-mix(in srgb, var(--panel) 70%, var(--ink)); }
   .sw { width: 10px; height: 10px; border-radius: 3px; background: var(--c); flex: none; }
@@ -422,9 +423,10 @@ function visible() {
   const showClosed = $('closed').checked;
   let sessions = data.sessions.filter(s => s.live || showClosed);
   const names = new Set(sessions.map(s => s.name));
-  const links = data.links.filter(l => l.from !== l.to).map(l => ({ ...l }));
-  // A closed session that work was handed to stays on the diagram as a ghost, so a lost hand-off is visible.
-  for (const l of links) for (const n of [l.from, l.to]) {
+  // Without "Closed sessions", only live tabs and the hand-offs between them show; old sessions disappear.
+  const links = data.links.filter(l => l.from !== l.to && (showClosed || [l.from, l.to].every(n => n === 'you' || names.has(n)))).map(l => ({ ...l }));
+  // With "Closed sessions" on, a closed session that work was handed to stays on the diagram as a ghost, so a lost hand-off is visible.
+  if (showClosed) for (const l of links) for (const n of [l.from, l.to]) {
     if (n !== 'you' && !names.has(n)) { names.add(n); sessions.push({ ...(byName[n] || { name: n, live: false, status: 'closed', tasks: [], events: [], activity: [], spawns: [] }), ghost: true }); }
   }
   // Queues: every live queue tab, plus registered queues whose tab closed with tasks unfinished (orphans).
@@ -436,15 +438,28 @@ function visible() {
     queues.push({ key: s ? s.name : 'q:' + q.n, n: q.n, s, orphan: q.open });
   }
   queues.sort((a, b) => (a.n ?? 0) - (b.n ?? 0));
-  // Per queue: the analysts it started (running, or finished in the last 15 min) and one node for its tasks in the cloud.
-  const helpers = [], clouds = [];
+  // Helper agents only while they run (a finished one disappears at once), and one node per queue for its tasks in the cloud now.
+  // Spawns of any session count: a closed queue's go to the live queue with its number, others to their own (ghost) box.
+  // A spawn with no end marker counts as finished once its session is closed and its transcript idle for over 10 min.
+  const helpers = [], clouds = [], HELPER_CAP = 8, STALE = 10 * 60e3;
+  const owners = [];
+  for (const s of data.sessions) {
+    const sps = (s.spawns || []).filter(sp => !sp.end && (s.live || data.now - (s.updated || 0) < STALE));
+    if (!sps.length) continue;
+    const q = queues.find(q => q.s === s) || (s.kind === 'queue' && queues.find(q => q.n === s.queue));
+    owners.push({ key: q ? q.key : s.name, s, sps });
+  }
+  // The newest running helpers, up to HELPER_CAP, so the diagram can't flood.
+  const pick = owners.flatMap(o => o.sps.map(h => ({ ...h, q: o.key, owner: o.s })))
+    .sort((a, b) => String(b.start).localeCompare(String(a.start))).slice(0, HELPER_CAP)
+    .sort((a, b) => String(a.start).localeCompare(String(b.start)));
+  for (const h of pick) {
+    if (!names.has(h.q) && !queues.some(q => q.key === h.q)) { names.add(h.q); sessions.push({ ...h.owner, ghost: !h.owner.live }); }
+    helpers.push(h);
+    links.push({ from: h.q, to: 'sp:' + h.id, count: 1, last: h.start, label: h.name, helper: true });
+  }
   for (const q of queues) {
-    for (const h of q.s?.live ? q.s.spawns.filter(sp => !sp.end || data.now - Date.parse(sp.end) < 15 * 60e3).slice(-5) : []) {
-      helpers.push({ ...h, q: q.key });
-      links.push({ from: q.key, to: 'sp:' + h.id, count: 1, last: h.start, label: h.name, helper: true });
-      if (h.end) links.push({ from: 'sp:' + h.id, to: q.key, count: 1, last: h.end, label: 'work order back', helper: true });
-    }
-    const inCloud = (qtasks || []).filter(t => t.stage === 'in-cloud' && sameQueue(t, q.n));
+    const inCloud = (qtasks || []).filter(t => sameQueue(t, q.n) && t.stage === 'in-cloud');
     if (inCloud.length) {
       clouds.push({ key: 'cloud:' + q.key, q: q.key, tasks: inCloud });
       links.push({ from: q.key, to: 'cloud:' + q.key, count: inCloud.length, last: inCloud[0].last, label: 'in cloud', helper: true });
@@ -465,7 +480,7 @@ function computeLayout(v) {
   const roleSession = r => v.sessions.find(s => s.live && s.name === data.roles[r]);
   const isHelper = k => k.startsWith('sp:') || k.startsWith('cloud:') || k === 'role:analysts';
   const analysts = v.queues.flatMap(q => [...v.helpers.filter(h => h.q === q.key).map(h => 'sp:' + h.id),
-    ...v.clouds.filter(c => c.q === q.key).map(c => c.key)]);
+    ...v.clouds.filter(c => c.q === q.key).map(c => c.key)]).concat(v.helpers.filter(h => !v.queues.some(q => q.key === h.q)).map(h => 'sp:' + h.id));
   if (!v.pipelineMode) { // no roles yet: everyone in one row under You
     const n = Math.max(1, v.sessions.length), colW = W / n;
     if (!narrow) {
@@ -586,6 +601,8 @@ function buildFlow(v) {
   }
 }
 
+// Subagent types the diagram names on the helper box (subagent_type from the Agent call).
+const SPAWN_KIND = { analyst: { label: 'Analyst', cls: 'k-analyst' }, coder: { label: 'Coder', cls: 'k-coder' } };
 function nodeContent(name, v) {
   const now = data.now;
   if (name === 'you') {
@@ -607,8 +624,10 @@ function nodeContent(name, v) {
   }
   if (name.startsWith('sp:')) {
     const h = v.helpers.find(x => 'sp:' + x.id === name);
-    const line = h.end ? `Finished in ${dur(Date.parse(h.end) - Date.parse(h.start))}` : `Working ${dur(now - Date.parse(h.start))}${h.model ? ', ' + h.model : ''}`;
-    return ['node helper' + (h.end ? ' done' : ''), `<div class="n1"><i class="ph ${h.end ? 'ph-check-circle' : 'ph-circle-notch spin'}"></i><b>${esc(h.name)}</b></div><div class="n2">${esc(line)}</div>`];
+    const line = `Working ${dur(now - Date.parse(h.start))}${h.model ? ', ' + h.model : ''}`;
+    const kind = SPAWN_KIND[h.type] || (/^Analyst\b/.test(h.name) ? SPAWN_KIND.analyst : /^Coder\b/.test(h.name) ? SPAWN_KIND.coder : null);
+    const tag = kind ? `<span class="tag ${kind.cls}">${kind.label}</span>` : '';
+    return ['node helper' + (kind ? ' ' + kind.cls : ''), `<div class="n1"><i class="ph ph-circle-notch spin"></i><b>${esc(h.name)}</b>${tag}</div><div class="n2">${esc(line)}</div>`];
   }
   const s = byName[name] || v.sessions.find(x => x.name === name) || { name, status: 'closed' };
   const cur = s.tasks?.[s.tasks.length - 1];
@@ -1062,7 +1081,7 @@ async function poll() {
     const r = await fetch('/api/sessions', { cache: 'no-store' });
     if (!r.ok) throw new Error(r.status);
     data = await r.json();
-    byName = Object.fromEntries(data.sessions.map(s => [s.name, s]));
+    byName = Object.fromEntries(data.sessions.slice().reverse().map(s => [s.name, s])); // live first in the list, so a live tab wins over a closed one with the same name
     render();
     detectNew(first);
     if (first) { setTab(tab); intro(visible()); }

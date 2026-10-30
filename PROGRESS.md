@@ -131,3 +131,12 @@ Planned phases:
     - `npm test`: 43/43 (run with `PIPELINE_PY` pointing at the shop worktree until it is merged).
   - **Still to do with the user:** merge both branches; a real two-tab `/queue` dry run (orphan question, `--continue`, a cross-queue "yes" refused); one task end to end with the browser agent writing `result.md`.
 
+- **2026-10-29, Q-009: analysts visible in the diagram.**
+  - Spawns now carry `type` (the Agent call's `subagent_type`; `lib/transcript.js`, `server.js`), and `/api/tokens` subagent rows carry `agentType` from `agent-*.meta.json` (`lib/usage.js`).
+  - `index.html` `visible()`: helper boxes come from every session (live or closed, queue or not), running or finished in the last 3 h (matches server.js's spawn window), capped at 8 (running first, then newest). A closed queue's spawns attach to the live queue with the same number; other owners get their own (ghost) box. Analyst and coder helpers get a tag and coloured edge (`SPAWN_KIND`); finished ones use the existing `.done` style.
+  - Cloud node stays for 3 h after a task leaves `in-cloud`, shown as done.
+  - Checked: `npm test` 43/43; dashboard restarted; `visible()` run against live API data shows `Analyst Q-010` (type analyst) and the coder runs. "Analyst Q-004" (04:13 UTC) is past the 3 h window, so it correctly no longer shows.
+- **2026-10-29, Q-012: helpers show only while running.**
+  - `index.html` `visible()`: a spawn is drawn only while it has no end marker; finished ones disappear at once (no 3 h window, no greyed `.done` boxes, no "back" edge). An unended spawn whose session is closed and whose transcript is idle over 10 min counts as finished (`STALE`). Cap of 8 (newest running), any-session owners, and analyst/coder tags stay; a `general-purpose` spawn named "Coder ..." also gets the coder tag.
+  - Cloud node shows only while a task's stage is `in-cloud`.
+  - Checked: `npm test` passes; dashboard restarted; `visible()` on live `/api/sessions` shows only the 2 running coders (Q-011, Q-012) of 9 spawns in the last 3 h; no cloud node (no task in-cloud).

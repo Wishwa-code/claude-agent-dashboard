@@ -94,8 +94,8 @@ function sessionUsage(projectDir, onlyIds) {
       const st = readUsage(sf, cache.get(sf));
       cache.set(sf, st);
       if (st.description === undefined) {
-        try { st.description = JSON.parse(fs.readFileSync(path.join(subDir, `agent-${m[1]}.meta.json`), 'utf8')).description || ''; }
-        catch { st.description = ''; }
+        try { const meta = JSON.parse(fs.readFileSync(path.join(subDir, `agent-${m[1]}.meta.json`), 'utf8')); st.description = meta.description || ''; st.agentType = meta.agentType || ''; }
+        catch { st.description = ''; st.agentType = ''; }
       }
       subagents[m[1]] = st;
     }
